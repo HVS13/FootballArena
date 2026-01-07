@@ -12,7 +12,9 @@ This file outlines the implementation tasks required to deliver the first iterat
  - Define a file format (CSV or JSON) for player lists and team configurations.
  - Parse imported files into structured objects containing all player attributes (technical, mental, physical, goalkeeping, hidden).
  - Validate values and scale them to a 0-100 range.
+ - Parse player profile data (shirt number, age, height, weight, foot ratings, nationality) and player traits.
  - Load tactical lists (team instructions, player roles, duties) from `football_game_reference.md` and expose them as structured data.
+ - Maintain import reference docs for columns, options, and examples.
 
 3. **Build TeamSetupAgent and UI integration**
  - Design drag-and-drop components for selecting formations and placing players on the pitch.

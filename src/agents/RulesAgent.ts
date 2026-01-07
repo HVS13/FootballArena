@@ -38,10 +38,20 @@ const getAttribute = (player: PlayerState, id: string, fallback = 50) => player.
 const hasPlaystyle = (player: PlayerState, id: string) =>
   player.playstyles?.includes(id) || player.playstylesPlus?.includes(id) || false;
 
+const hasTrait = (player: PlayerState, id: string) => player.traits?.includes(id) || false;
+
 const playstyleMultiplier = (player: PlayerState, id: string, standard: number, plus: number) => {
   if (player.playstylesPlus?.includes(id)) return plus;
   if (player.playstyles?.includes(id)) return standard;
   return 1;
+};
+
+const getFootBalance = (player: PlayerState) => {
+  const left = player.leftFoot ?? 50;
+  const right = player.rightFoot ?? 50;
+  const high = Math.max(left, right, 1);
+  const low = Math.min(left, right);
+  return low / high;
 };
 
 export class RulesAgent {
@@ -173,6 +183,7 @@ export class RulesAgent {
     const composure = getAttribute(passer, 'composure');
     const pressurePenalty = clamp(pressure * (0.4 - composure / 250), 0, 0.35);
     passChance *= 1 - pressurePenalty;
+    passChance *= 1 - this.getFootPenalty(passer);
     passChance *= playstyleMultiplier(passer, 'press_proven', 1.02, 1.05);
     passChance *= playstyleMultiplier(passer, 'tiki_taka', 1.05, 1.1);
     passChance *= playstyleMultiplier(passer, 'incisive_pass', 1.04, 1.08);
@@ -249,13 +260,20 @@ export class RulesAgent {
     goalChance *= playstyleMultiplier(shooter, 'finesse_shot', 1.08, 1.15);
     goalChance *= playstyleMultiplier(shooter, 'chip_shot', 1.04, 1.08);
     goalChance *= playstyleMultiplier(shooter, 'precision_header', 1.05, 1.1);
+    if (hasTrait(shooter, 'places_shots')) goalChance *= 1.05;
+    if (hasTrait(shooter, 'shoots_with_power')) goalChance *= 1.04;
+    if (hasTrait(shooter, 'curls_ball')) goalChance *= 1.03;
 
     const pressure = this.getPressure(state, shooter);
     const composure = getAttribute(shooter, 'composure');
     const pressurePenalty = clamp(pressure * (0.45 - composure / 220), 0, 0.4);
     goalChance *= 1 - pressurePenalty;
+    goalChance *= 1 - this.getFootPenalty(shooter);
 
-    const onTargetChance = clamp(0.4 + (shotSkill / 100) * 0.45, 0.4, 0.85) * (1 - pressurePenalty * 0.5);
+    let onTargetChance = clamp(0.4 + (shotSkill / 100) * 0.45, 0.4, 0.85) * (1 - pressurePenalty * 0.5);
+    if (hasTrait(shooter, 'places_shots')) onTargetChance *= 1.05;
+    if (hasTrait(shooter, 'shoots_with_power')) onTargetChance *= 0.97;
+    if (hasTrait(shooter, 'curls_ball')) onTargetChance *= 1.02;
 
     const roll = Math.random();
     const ballVelocity = this.buildBallVelocity(state.ball.position, goal, 14 + (shotSkill / 100) * 10);
@@ -375,7 +393,10 @@ export class RulesAgent {
       if (opponent.teamId === player.teamId) continue;
       const dx = opponent.position.x - player.position.x;
       const dy = opponent.position.y - player.position.y;
-      const dist = Math.hypot(dx, dy);
+      let dist = Math.hypot(dx, dy);
+      if (hasTrait(opponent, 'marks_opponent_tightly')) dist *= 0.85;
+      if (hasTrait(opponent, 'dives_into_tackles')) dist *= 0.9;
+      if (hasTrait(opponent, 'does_not_dive_into_tackles')) dist *= 1.05;
       if (dist < closestDistance) {
         closestDistance = dist;
       }
@@ -383,6 +404,14 @@ export class RulesAgent {
 
     if (!Number.isFinite(closestDistance)) return 0;
     return clamp((PRESSURE_DISTANCE - closestDistance) / PRESSURE_DISTANCE, 0, 1);
+  }
+
+  private getFootPenalty(player: PlayerState) {
+    const balance = getFootBalance(player);
+    let penalty = clamp((1 - balance) * 0.12, 0, 0.12);
+    if (hasTrait(player, 'avoids_using_weaker_foot')) penalty *= 1.3;
+    if (hasTrait(player, 'attempts_to_develop_weaker_foot')) penalty *= 0.7;
+    return clamp(penalty, 0, 0.18);
   }
 
   private pickClosestOpponent(state: SimulationState, teamId: string) {

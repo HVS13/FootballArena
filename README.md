@@ -7,19 +7,21 @@ This repository outlines the architecture and requirements for a web-based footb
 Key features include:
 
 * **Realistic physics:** Player and ball movements adhere to real-world dynamics, influenced by player attributes such as pace, stamina, agility and strength.
-* **Comprehensive player data:** Users can import custom player lists with full attribute sets (technical, mental, physical, goalkeeping, hidden) on a 0-100 scale.
+* **Comprehensive player data:** Users can import custom player lists with full attribute sets (technical, mental, physical, goalkeeping, hidden) on a 0-100 scale, plus player traits and physical profiles.
 * **Detailed tactics:** Full support for Football Manager-style team instructions, player roles, and duties. These dictate how teams play, from passing directness to pressing traps and defensive lines.
 * **2D match view:** A top-down pitch with circular player icons (and foot indicators) similar to Football Manager. Live commentary and real-time statistics are displayed below the pitch.
 * **Adjustable match speed:** Users can toggle simulation speed between x2, x4, x8, and x16, or pause/resume the match at any time.
 * **Substitutions and rule enforcement:** The game enforces official FIFA rules and allows in-game substitutions with the correct limits.
 * **Possession-driven actions:** The simulation progresses through possession, with carries, targeted passes, shots, and stoppages flowing from the ball carrier under pressure.
 * **Match environment effects:** Weather, wind, temperature, and pitch conditions influence ball physics and player fatigue.
+* **Player traits:** FM player preferred moves modify decisions like carrying, passing, and shooting.
 
 ## v0.1 Scope and Acceptance Criteria
 
 **Scope (in):**
 - Local hotseat only (two users on one device).
 - Player import with validation and 0-100 scaling.
+- Player profiles include shirt number, age, height, weight, foot ratings, nationality, and traits.
 - FM26 team instructions, roles, and duties available in UI.
 - EA FC 26 PlayStyles available and applied to gameplay (passing, shooting, dribbling, physicality).
 - Match environment configuration available in setup (weather, wind, temperature, pitch condition, presets, randomize).
@@ -50,6 +52,7 @@ Key features include:
 | **SKILLS.md** | Lists the skills and capabilities required to build this project, including web technologies, physics, and domain expertise. |
 | **football_game_reference.md** | Contains detailed lists of player attributes, EA Sports FC PlayStyles with their effects, Football Manager team instructions, roles, and duties. You must consult this file to understand how to implement attributes and tactics. |
 | **docs/IMPORT_SCHEMA.md** | Defines the CSV/JSON formats accepted by the DataImportAgent. |
+| **docs/IMPORT_GUIDE.md** | Full import reference with every column, options list, and explanations. |
 | **scripts/build-reference-data.mjs** | Generates structured reference data from `football_game_reference.md`. |
 | **TODO** | A task list guiding the implementation of the game. |
 | **README** | Provides an overview of the project and guidance on how to get started. |

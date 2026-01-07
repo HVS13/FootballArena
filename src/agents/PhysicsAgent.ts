@@ -59,6 +59,9 @@ export class PhysicsAgent {
       const acceleration = getAttribute(player, 'acceleration');
       const agility = getAttribute(player, 'agility');
       const stamina = getAttribute(player, 'stamina');
+      const age = player.age ?? 24;
+      const heightCm = player.heightCm ?? 180;
+      const weightKg = player.weightKg ?? 75;
 
       let maxSpeed = (4 + (pace / 100) * 4) * env.speedFactor;
       let accel = (8 + (acceleration / 100) * 8) * env.accelFactor;
@@ -69,8 +72,16 @@ export class PhysicsAgent {
       staminaPenalty *= playstyleMultiplier(player, 'relentless', 0.85, 0.7);
       const staminaFactor = 1 - staminaPenalty;
 
+      const ageFactor =
+        age >= 30 ? 1 - (age - 30) * 0.006 : age <= 21 ? 1 + (21 - age) * 0.003 : 1;
+      const weightFactor = clamp(1 - (weightKg - 75) * 0.003, 0.9, 1.05);
+      const heightFactor = clamp(1 - (heightCm - 180) * 0.0015, 0.94, 1.05);
+
       maxSpeed *= staminaFactor;
       accel *= staminaFactor;
+
+      maxSpeed *= ageFactor * weightFactor * heightFactor;
+      accel *= ageFactor * weightFactor;
 
       maxSpeed *= playstyleMultiplier(player, 'rapid', 1.08, 1.16);
       accel *= playstyleMultiplier(player, 'quick_step', 1.08, 1.16);

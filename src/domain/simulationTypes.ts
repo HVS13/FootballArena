@@ -14,6 +14,13 @@ export type TeamState = {
 export type PlayerState = {
   id: string;
   name: string;
+  shirtNo?: number;
+  age?: number;
+  heightCm?: number;
+  weightKg?: number;
+  leftFoot?: number;
+  rightFoot?: number;
+  nationality?: string;
   teamId: string;
   position: Vector2;
   velocity: Vector2;
@@ -24,6 +31,7 @@ export type PlayerState = {
   attributes?: PlayerAttributes;
   playstyles?: string[];
   playstylesPlus?: string[];
+  traits?: string[];
 };
 
 export type BallState = {

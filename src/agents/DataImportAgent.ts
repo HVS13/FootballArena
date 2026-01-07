@@ -1,7 +1,15 @@
 import { attributeIdToName, attributeIds, attributeNameMap, normalizeKey, referenceData } from '../data/referenceData';
+import { playerTraitIdMap } from '../data/playerTraits';
 import { ImportError, ImportResult, PlayerImport, TeamImport } from '../domain/types';
 
 type FileFormat = 'json' | 'csv';
+
+type NumberParseOptions = {
+  min?: number;
+  max?: number;
+  integer?: boolean;
+  scale?: boolean;
+};
 
 const DEFAULT_TEAM = 'Team A';
 
@@ -124,6 +132,60 @@ const normalizeAttributes = (raw: Record<string, unknown>, errors: ImportError[]
   return { attributes, isComplete: !missing.length };
 };
 
+const getRawValue = (raw: Record<string, unknown>, keys: string[]) => {
+  for (const key of keys) {
+    if (key in raw) {
+      const value = raw[key];
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        return value;
+      }
+    }
+  }
+  return undefined;
+};
+
+const parseOptionalNumber = (
+  rawValue: unknown,
+  errors: ImportError[],
+  row: number | undefined,
+  field: string,
+  options: NumberParseOptions = {}
+) => {
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return undefined;
+  }
+  const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+  if (Number.isNaN(value)) {
+    errors.push({ row, field, message: `Invalid number: ${rawValue}` });
+    return undefined;
+  }
+
+  let finalValue = value;
+  if (options.scale) {
+    const scaled = scaleAttributeValue(value);
+    if (scaled === null) {
+      errors.push({ row, field, message: `Invalid value: ${rawValue}` });
+      return undefined;
+    }
+    finalValue = scaled;
+  }
+
+  if (options.integer) {
+    finalValue = Math.round(finalValue);
+  }
+
+  if (options.min !== undefined && finalValue < options.min) {
+    errors.push({ row, field, message: `Value must be >= ${options.min}` });
+    return undefined;
+  }
+  if (options.max !== undefined && finalValue > options.max) {
+    errors.push({ row, field, message: `Value must be <= ${options.max}` });
+    return undefined;
+  }
+
+  return finalValue;
+};
+
 const parsePlaystyleList = (
   raw: unknown,
   errors: ImportError[],
@@ -147,6 +209,38 @@ const parsePlaystyleList = (
         row,
         field,
         message: `Unknown playstyle: ${value}`
+      });
+      return;
+    }
+    result.add(normalized);
+  });
+
+  return Array.from(result);
+};
+
+const parseTraitList = (
+  raw: unknown,
+  errors: ImportError[],
+  row: number | undefined,
+  field: string
+) => {
+  if (!raw) return [];
+
+  const values = Array.isArray(raw)
+    ? raw.map((value) => String(value))
+    : String(raw)
+        .split(/[|;/,]/g)
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+  const result = new Set<string>();
+  values.forEach((value) => {
+    const normalized = playerTraitIdMap.get(normalizeKey(value));
+    if (!normalized) {
+      errors.push({
+        row,
+        field,
+        message: `Unknown player trait: ${value}`
       });
       return;
     }
@@ -184,6 +278,55 @@ const buildPlayer = (raw: Record<string, unknown>, errors: ImportError[], row?: 
     'playstylesPlus'
   );
 
+  const traits = parseTraitList(
+    raw.playerTraits ?? raw.player_traits ?? raw.traits,
+    errors,
+    row,
+    'playerTraits'
+  );
+
+  const shirtNo = parseOptionalNumber(
+    getRawValue(raw, ['shirtNo', 'shirt_no', 'shirt', 'number', 'shirtNumber']),
+    errors,
+    row,
+    'shirtNo',
+    { min: 1, max: 99, integer: true }
+  );
+
+  const age = parseOptionalNumber(getRawValue(raw, ['age']), errors, row, 'age', { min: 14, max: 45 });
+  const heightCm = parseOptionalNumber(
+    getRawValue(raw, ['heightCm', 'height_cm', 'height', 'Height', 'height (cm)']),
+    errors,
+    row,
+    'heightCm',
+    { min: 140, max: 220 }
+  );
+  const weightKg = parseOptionalNumber(
+    getRawValue(raw, ['weightKg', 'weight_kg', 'weight', 'Weight', 'weight (kg)']),
+    errors,
+    row,
+    'weightKg',
+    { min: 45, max: 120 }
+  );
+
+  const leftFoot = parseOptionalNumber(
+    getRawValue(raw, ['leftFoot', 'left_foot', 'left foot', 'Left Foot', 'leftfoot']),
+    errors,
+    row,
+    'leftFoot',
+    { min: 0, max: 100, scale: true }
+  );
+  const rightFoot = parseOptionalNumber(
+    getRawValue(raw, ['rightFoot', 'right_foot', 'right foot', 'Right Foot', 'rightfoot']),
+    errors,
+    row,
+    'rightFoot',
+    { min: 0, max: 100, scale: true }
+  );
+
+  const nationalityRaw = getRawValue(raw, ['nationality', 'nation', 'country']);
+  const nationality = nationalityRaw ? String(nationalityRaw).trim() : undefined;
+
   if (!name || !positions.length || !isComplete) {
     return null;
   }
@@ -191,10 +334,18 @@ const buildPlayer = (raw: Record<string, unknown>, errors: ImportError[], row?: 
   return {
     id: raw.id ? String(raw.id) : undefined,
     name,
+    shirtNo,
+    age,
+    heightCm,
+    weightKg,
+    leftFoot,
+    rightFoot,
+    nationality,
     positions,
     attributes,
     playstyles,
-    playstylesPlus
+    playstylesPlus,
+    traits
   };
 };
 

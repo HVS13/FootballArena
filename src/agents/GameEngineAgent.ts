@@ -38,9 +38,17 @@ type RestartState = {
 
 type PlayerMeta = {
   name: string;
+  shirtNo?: number;
+  age?: number;
+  heightCm?: number;
+  weightKg?: number;
+  leftFoot?: number;
+  rightFoot?: number;
+  nationality?: string;
   attributes?: PlayerAttributes;
   playstyles?: string[];
   playstylesPlus?: string[];
+  traits?: string[];
 };
 
 type SubstitutionTracker = {
@@ -90,7 +98,8 @@ const cloneState = (state: SimulationState): SimulationState => ({
     targetPosition: { ...player.targetPosition },
     attributes: player.attributes ? { ...player.attributes } : undefined,
     playstyles: player.playstyles ? [...player.playstyles] : undefined,
-    playstylesPlus: player.playstylesPlus ? [...player.playstylesPlus] : undefined
+    playstylesPlus: player.playstylesPlus ? [...player.playstylesPlus] : undefined,
+    traits: player.traits ? [...player.traits] : undefined
   })),
   ball: {
     ...state.ball,
@@ -170,9 +179,16 @@ const buildPlayers = (teamId: string, pitch: PitchDimensions, isHome: boolean) =
       targetPosition: { ...position },
       targetTimer: Math.random() * 3,
       radius: 1.2,
+      shirtNo: index + 1,
+      age: 24,
+      heightCm: 180,
+      weightKg: 75,
+      leftFoot: 50,
+      rightFoot: 50,
       attributes: {},
       playstyles: [],
-      playstylesPlus: []
+      playstylesPlus: [],
+      traits: []
     };
   });
 };
@@ -235,6 +251,13 @@ const buildStateFromSetup = (pitch: PitchDimensions, setup: TeamSetupState): Sim
       return {
         id: rosterPlayer?.id ?? `${team.id}-${slot.id}`,
         name,
+        shirtNo: rosterPlayer?.shirtNo,
+        age: rosterPlayer?.age,
+        heightCm: rosterPlayer?.heightCm,
+        weightKg: rosterPlayer?.weightKg,
+        leftFoot: rosterPlayer?.leftFoot,
+        rightFoot: rosterPlayer?.rightFoot,
+        nationality: rosterPlayer?.nationality,
         teamId: team.id,
         position: { ...position },
         velocity: { x: 0, y: 0 },
@@ -244,7 +267,8 @@ const buildStateFromSetup = (pitch: PitchDimensions, setup: TeamSetupState): Sim
         radius: 1.2,
         attributes: rosterPlayer?.attributes ?? {},
         playstyles: rosterPlayer?.playstyles ?? [],
-        playstylesPlus: rosterPlayer?.playstylesPlus ?? []
+        playstylesPlus: rosterPlayer?.playstylesPlus ?? [],
+        traits: rosterPlayer?.traits ?? []
       };
     });
   });
@@ -270,9 +294,17 @@ const createRosterMetaMap = (setup: TeamSetupState | null, state: SimulationStat
       if (player.id) {
         meta.set(player.id, {
           name: player.name,
+          shirtNo: player.shirtNo,
+          age: player.age,
+          heightCm: player.heightCm,
+          weightKg: player.weightKg,
+          leftFoot: player.leftFoot,
+          rightFoot: player.rightFoot,
+          nationality: player.nationality,
           attributes: player.attributes,
           playstyles: player.playstyles ?? [],
-          playstylesPlus: player.playstylesPlus ?? []
+          playstylesPlus: player.playstylesPlus ?? [],
+          traits: player.traits ?? []
         });
       }
     });
@@ -286,9 +318,17 @@ const createRosterMetaMap = (setup: TeamSetupState | null, state: SimulationStat
     if (!rosterMeta[player.teamId].has(player.id)) {
       rosterMeta[player.teamId].set(player.id, {
         name: player.name,
+        shirtNo: player.shirtNo,
+        age: player.age,
+        heightCm: player.heightCm,
+        weightKg: player.weightKg,
+        leftFoot: player.leftFoot,
+        rightFoot: player.rightFoot,
+        nationality: player.nationality,
         attributes: player.attributes,
         playstyles: player.playstyles ?? [],
-        playstylesPlus: player.playstylesPlus ?? []
+        playstylesPlus: player.playstylesPlus ?? [],
+        traits: player.traits ?? []
       });
     }
   });
@@ -451,6 +491,13 @@ export class GameEngineAgent {
       ...offPlayer,
       id: onPlayerId,
       name: onName,
+      shirtNo: onMeta?.shirtNo ?? offPlayer.shirtNo,
+      age: onMeta?.age ?? offPlayer.age,
+      heightCm: onMeta?.heightCm ?? offPlayer.heightCm,
+      weightKg: onMeta?.weightKg ?? offPlayer.weightKg,
+      leftFoot: onMeta?.leftFoot ?? offPlayer.leftFoot,
+      rightFoot: onMeta?.rightFoot ?? offPlayer.rightFoot,
+      nationality: onMeta?.nationality ?? offPlayer.nationality,
       position: { ...offPlayer.position },
       velocity: { x: 0, y: 0 },
       homePosition: { ...offPlayer.homePosition },
@@ -458,7 +505,8 @@ export class GameEngineAgent {
       targetTimer: Math.random() * 3,
       attributes: onMeta?.attributes ?? offPlayer.attributes,
       playstyles: onMeta?.playstyles ?? offPlayer.playstyles,
-      playstylesPlus: onMeta?.playstylesPlus ?? offPlayer.playstylesPlus
+      playstylesPlus: onMeta?.playstylesPlus ?? offPlayer.playstylesPlus,
+      traits: onMeta?.traits ?? offPlayer.traits
     };
 
     this.state.players[playerIndex] = incomingPlayer;
@@ -630,6 +678,10 @@ export class GameEngineAgent {
     if (this.hasPlaystyle(player, 'technical')) carryChance += 0.05;
     if (this.hasPlaystyle(player, 'press_proven')) carryChance += 0.04;
     if (this.hasPlaystyle(player, 'trickster')) carryChance += 0.04;
+    if (this.hasTrait(player, 'runs_with_ball_often')) carryChance += 0.12;
+    if (this.hasTrait(player, 'runs_with_ball_rarely')) carryChance -= 0.18;
+    if (this.hasTrait(player, 'knocks_ball_past_opponent')) carryChance += 0.06;
+    if (this.hasTrait(player, 'tries_to_play_way_out_of_trouble')) carryChance += 0.05;
 
     carryChance *= 1 - clamp(pressure * 0.55, 0, 0.45);
     carryChance = clamp(carryChance, 0.08, 0.55);
@@ -656,6 +708,11 @@ export class GameEngineAgent {
     if (actionType === 'pass') base += 0.15;
     if (actionType === 'carry') base += 0.2;
 
+    if (this.hasTrait(player, 'dwells_on_ball')) base += 0.35;
+    if (this.hasTrait(player, 'stops_play')) base += 0.25;
+    if (this.hasTrait(player, 'dictates_tempo')) base += 0.2;
+    if (this.hasTrait(player, 'plays_one_twos')) base -= 0.1;
+
     base *= 1 - clamp(pressure * 0.25, 0, 0.2);
     return clamp(base, 0.45, 2.2);
   }
@@ -672,8 +729,10 @@ export class GameEngineAgent {
     const shotSkill = this.getShotSkill(player);
 
     const shotsInstruction = instructions?.shots_from_distance;
-    const maxRange =
+    let maxRange =
       shotsInstruction === 'Encouraged' ? 32 : shotsInstruction === 'Reduced' ? 22 : 26;
+    if (this.hasTrait(player, 'shoots_from_distance')) maxRange += 5;
+    if (this.hasTrait(player, 'refrains_from_taking_long_shots')) maxRange -= 6;
     if (distance > maxRange) return false;
 
     let desire = 0.1 + (shotSkill / 100) * 0.35;
@@ -687,6 +746,11 @@ export class GameEngineAgent {
     if (this.hasPlaystyle(player, 'power_shot')) desire += 0.05;
     if (this.hasPlaystyle(player, 'finesse_shot')) desire += 0.05;
     if (this.hasPlaystyle(player, 'chip_shot')) desire += 0.03;
+    if (this.hasTrait(player, 'shoots_with_power')) desire += 0.04;
+    if (this.hasTrait(player, 'places_shots')) desire += 0.03;
+    if (this.hasTrait(player, 'tries_first_time_shots') && distance <= 18) desire += 0.05;
+    if (this.hasTrait(player, 'looks_for_pass_rather_than_attempting_to_score')) desire -= 0.1;
+    if (this.hasTrait(player, 'penalty_box_player') && distance <= 12) desire += 0.06;
 
     desire += pressure * 0.08;
     if (hasPassOption) desire -= 0.05;
@@ -719,6 +783,12 @@ export class GameEngineAgent {
     const passerVision = this.getAttribute(passer, 'vision');
     const passerPassing = this.getAttribute(passer, 'passing');
     const rangeFactor = 0.7 + (passerPassing + passerVision) / 200;
+    const prefersShort = this.hasTrait(passer, 'plays_short_simple_passes');
+    const triesKiller = this.hasTrait(passer, 'tries_killer_balls_often');
+    const playsNoThrough = this.hasTrait(passer, 'plays_no_through_balls');
+    const likesSwitch = this.hasTrait(passer, 'likes_to_switch_ball_to_other_flank');
+    const oneTwos = this.hasTrait(passer, 'plays_one_twos');
+    const midline = this.pitch.height / 2;
 
     const scored = candidates
       .map((receiver) => {
@@ -728,14 +798,34 @@ export class GameEngineAgent {
         if (distance < 3) return null;
 
         const forward = dx * direction;
-        const distanceScore = 1 - clamp(Math.abs(distance - desiredDistance) / (desiredDistance * 0.9), 0, 1);
-        const forwardScore = clamp(forward / (desiredDistance * 1.3), -0.4, 1);
+        let distanceScore = 1 - clamp(Math.abs(distance - desiredDistance) / (desiredDistance * 0.9), 0, 1);
+        let forwardScore = clamp(forward / (desiredDistance * 1.3), -0.4, 1);
         const openness = this.getOpponentDistance(receiver.position, teamId);
         const opennessScore = clamp(openness / 10, 0, 1);
 
         let sideBonus = 0;
         if (progressThrough === 'Left' && receiver.position.y < this.pitch.height / 2) sideBonus = 0.12;
         if (progressThrough === 'Right' && receiver.position.y > this.pitch.height / 2) sideBonus = 0.12;
+        if (
+          likesSwitch &&
+          ((passer.position.y < midline && receiver.position.y > midline) ||
+            (passer.position.y > midline && receiver.position.y < midline))
+        ) {
+          sideBonus += 0.12;
+        }
+
+        if (prefersShort && distance > desiredDistance) {
+          distanceScore *= 0.85;
+        }
+        if (oneTwos && distance <= 12) {
+          distanceScore += 0.15;
+        }
+        if (playsNoThrough) {
+          forwardScore *= 0.6;
+        }
+        if (triesKiller) {
+          forwardScore *= 1.15;
+        }
 
         let score = 0.45 * distanceScore + 0.25 * opennessScore + 0.2 * forwardScore + sideBonus;
         score *= clamp(rangeFactor, 0.6, 1.3);
@@ -785,6 +875,9 @@ export class GameEngineAgent {
     if (this.hasPlaystyle(passer, 'long_ball_pass')) desired += 4;
     if (this.hasPlaystyle(passer, 'pinged_pass')) desired += 2;
     if (this.hasPlaystyle(passer, 'incisive_pass')) desired += 2;
+    if (this.hasTrait(passer, 'plays_short_simple_passes')) desired -= 4;
+    if (this.hasTrait(passer, 'tries_long_range_passes')) desired += 6;
+    if (this.hasTrait(passer, 'tries_killer_balls_often')) desired += 4;
 
     return clamp(desired, 8, 36);
   }
@@ -831,6 +924,10 @@ export class GameEngineAgent {
 
   private hasPlaystyle(player: typeof this.state.players[number], id: string) {
     return Boolean(player.playstyles?.includes(id) || player.playstylesPlus?.includes(id));
+  }
+
+  private hasTrait(player: typeof this.state.players[number], id: string) {
+    return Boolean(player.traits?.includes(id));
   }
 
   private findNearestPlayerToBall() {

@@ -10,6 +10,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
  - Maintain the clock and process simulation frames at real-time speed, with support for speed multipliers (x2, x4, x8, x16) and pause/resume.
  - Communicate with PhysicsAgent and RulesAgent to handle in-play events and ensure compliance with official FIFA rules.
  - Drive the possession-based action loop (carries, targeted passes, shots) and coordinate restarts (throw-ins, corners, free kicks, penalties, kick-offs).
+ - Apply player traits and footedness modifiers to decision making (carry, pass, shoot).
  - Trigger commentary updates to UIAgent and record match statistics for StatsAgent.
 * **Interactions:** Calls PhysicsAgent for position and movement updates, consults RulesAgent for rule enforcement, notifies UIAgent about state changes, and receives commands from PlaybackAgent (speed changes, pause, resume).
 
@@ -28,6 +29,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
 * **Responsibilities:**
  - Parse user-provided lists of players, including their full set of attributes (technical, mental, physical, goalkeeping, hidden). See the reference file for the list of attributes.
  - Validate imported data and map each attribute onto a 0-100 scale.
+ - Import player profile data (shirt number, age, height, weight, foot ratings, nationality) and player traits.
  - Process tactical data (team instructions, roles, duties) defined in Football Manager games.
  - Provide structured data objects to GameEngineAgent and TeamSetupAgent.
 * **Interactions:** Reads from external sources (user files) and writes to internal data stores. Communicates with TeamSetupAgent and GameEngineAgent.

@@ -28,7 +28,8 @@ Implementing a realistic football simulation game demands a wide range of techni
 | **Football Regulations** | Understand FIFA's laws of the game (offsides, fouls, throw-ins, etc.) and apply them via the RulesAgent. |
 | **Tactics & Roles** | Familiarity with formations, player roles, and duties from Football Manager. The project uses full lists of roles (sweeper keeper, ball-playing defender, inverted wing-back, etc.) and duties (attack, support, defend, stopper, cover, automatic). |
 | **EA Sports FC PlayStyles** | Recognise PlayStyle and PlayStyle+ effects for more immersive commentary and potential player behaviour modifications. |
-| **Player Attributes** | Interpret player attributes (technical, mental, physical, goalkeeping, hidden) and map them onto in-game behaviours.
+| **Player Attributes** | Interpret player attributes (technical, mental, physical, goalkeeping, hidden) and map them onto in-game behaviours. |
+| **Player Traits** | Translate Football Manager player traits into distinct behavioural modifiers for decision-making and movement. |
 
 ## Data Handling
 
