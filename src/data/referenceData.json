@@ -1,0 +1,1338 @@
+{
+  "attributes": {
+    "technical": [
+      {
+        "id": "corners",
+        "name": "Corners",
+        "description": "quality of corner-kick deliveries.",
+        "options": []
+      },
+      {
+        "id": "crossing",
+        "name": "Crossing",
+        "description": "accuracy of crosses from wide areas.",
+        "options": []
+      },
+      {
+        "id": "dribbling",
+        "name": "Dribbling",
+        "description": "ability to beat opponents with the ball.",
+        "options": []
+      },
+      {
+        "id": "finishing",
+        "name": "Finishing",
+        "description": "ability to convert chances into goals.",
+        "options": []
+      },
+      {
+        "id": "first_touch",
+        "name": "First Touch",
+        "description": "control when receiving the ball.",
+        "options": []
+      },
+      {
+        "id": "free_kick_taking",
+        "name": "Free Kick Taking",
+        "description": "quality of free-kick deliveries and shooting.",
+        "options": []
+      },
+      {
+        "id": "heading",
+        "name": "Heading",
+        "description": "accuracy and power when heading.",
+        "options": []
+      },
+      {
+        "id": "long_shots",
+        "name": "Long Shots",
+        "description": "ability to strike accurately from distance.",
+        "options": []
+      },
+      {
+        "id": "long_throws",
+        "name": "Long Throws",
+        "description": "distance and accuracy of throw-ins.",
+        "options": []
+      },
+      {
+        "id": "marking",
+        "name": "Marking",
+        "description": "ability to track and obstruct opponents.",
+        "options": []
+      },
+      {
+        "id": "passing",
+        "name": "Passing",
+        "description": "accuracy and variety of passes.",
+        "options": []
+      },
+      {
+        "id": "penalty_taking",
+        "name": "Penalty Taking",
+        "description": "nerve and accuracy from the penalty spot.",
+        "options": []
+      },
+      {
+        "id": "tackling",
+        "name": "Tackling",
+        "description": "technique and timing of tackles.",
+        "options": []
+      },
+      {
+        "id": "technique",
+        "name": "Technique",
+        "description": "general ball-control and flair.",
+        "options": []
+      }
+    ],
+    "goalkeeping": [
+      {
+        "id": "aerial_reach",
+        "name": "Aerial Reach",
+        "description": "ability to claim high balls.",
+        "options": []
+      },
+      {
+        "id": "command_of_area",
+        "name": "Command of Area",
+        "description": "authority in dealing with crosses and organising defence.",
+        "options": []
+      },
+      {
+        "id": "communication",
+        "name": "Communication",
+        "description": "clarity when directing defenders.",
+        "options": []
+      },
+      {
+        "id": "eccentricity",
+        "name": "Eccentricity",
+        "description": "tendency to perform unexpected actions.",
+        "options": []
+      },
+      {
+        "id": "first_touch",
+        "name": "First Touch",
+        "description": "ball control when receiving passes.",
+        "options": []
+      },
+      {
+        "id": "handling",
+        "name": "Handling",
+        "description": "reliability in catching or parrying shots.",
+        "options": []
+      },
+      {
+        "id": "kicking",
+        "name": "Kicking",
+        "description": "accuracy of long kicks.",
+        "options": []
+      },
+      {
+        "id": "one_on_ones",
+        "name": "One on Ones",
+        "description": "performance in one-vs-one situations.",
+        "options": []
+      },
+      {
+        "id": "passing",
+        "name": "Passing",
+        "description": "precision when playing short balls from the back.",
+        "options": []
+      },
+      {
+        "id": "reflexes",
+        "name": "Reflexes",
+        "description": "reaction time to shots.",
+        "options": []
+      },
+      {
+        "id": "rushing_out",
+        "name": "Rushing Out",
+        "description": "willingness to leave the line to intercept through-balls.",
+        "options": []
+      },
+      {
+        "id": "tendency_to_punch",
+        "name": "Tendency to Punch",
+        "description": "preference for punching rather than catching crosses.",
+        "options": []
+      },
+      {
+        "id": "throwing",
+        "name": "Throwing",
+        "description": "distance and accuracy of throws.",
+        "options": []
+      }
+    ],
+    "mental": [
+      {
+        "id": "aggression",
+        "name": "Aggression",
+        "description": "willingness to contest for the ball.",
+        "options": []
+      },
+      {
+        "id": "anticipation",
+        "name": "Anticipation",
+        "description": "ability to read play and react.",
+        "options": []
+      },
+      {
+        "id": "bravery",
+        "name": "Bravery",
+        "description": "willingness to put one's body on the line.",
+        "options": []
+      },
+      {
+        "id": "composure",
+        "name": "Composure",
+        "description": "calmness under pressure.",
+        "options": []
+      },
+      {
+        "id": "concentration",
+        "name": "Concentration",
+        "description": "focus on tasks throughout a match.",
+        "options": []
+      },
+      {
+        "id": "decisions",
+        "name": "Decisions",
+        "description": "quality of decision-making during play.",
+        "options": []
+      },
+      {
+        "id": "determination",
+        "name": "Determination",
+        "description": "desire to overcome adversity.",
+        "options": []
+      },
+      {
+        "id": "flair",
+        "name": "Flair",
+        "description": "tendency to try the unexpected.",
+        "options": []
+      },
+      {
+        "id": "leadership",
+        "name": "Leadership",
+        "description": "ability to inspire teammates.",
+        "options": []
+      },
+      {
+        "id": "off_the_ball",
+        "name": "Off the Ball",
+        "description": "movement without the ball.",
+        "options": []
+      },
+      {
+        "id": "positioning",
+        "name": "Positioning",
+        "description": "ability to be in the right place when defending.",
+        "options": []
+      },
+      {
+        "id": "teamwork",
+        "name": "Teamwork",
+        "description": "willingness to follow instructions and support colleagues.",
+        "options": []
+      },
+      {
+        "id": "vision",
+        "name": "Vision",
+        "description": "awareness of passing options.",
+        "options": []
+      },
+      {
+        "id": "work_rate",
+        "name": "Work Rate",
+        "description": "intensity and effort.",
+        "options": []
+      }
+    ],
+    "physical": [
+      {
+        "id": "acceleration",
+        "name": "Acceleration",
+        "description": "how quickly a player reaches top speed.",
+        "options": []
+      },
+      {
+        "id": "agility",
+        "name": "Agility",
+        "description": "ease of changing direction.",
+        "options": []
+      },
+      {
+        "id": "balance",
+        "name": "Balance",
+        "description": "ability to stay on feet under pressure.",
+        "options": []
+      },
+      {
+        "id": "jumping_reach",
+        "name": "Jumping Reach",
+        "description": "height of jumps.",
+        "options": []
+      },
+      {
+        "id": "natural_fitness",
+        "name": "Natural Fitness",
+        "description": "overall physical resilience.",
+        "options": []
+      },
+      {
+        "id": "pace",
+        "name": "Pace",
+        "description": "maximum running speed.",
+        "options": []
+      },
+      {
+        "id": "stamina",
+        "name": "Stamina",
+        "description": "ability to perform for the full match.",
+        "options": []
+      },
+      {
+        "id": "strength",
+        "name": "Strength",
+        "description": "ability to hold off opponents.",
+        "options": []
+      }
+    ],
+    "hidden": [
+      {
+        "id": "adaptability",
+        "name": "Adaptability",
+        "description": "ease of settling in new environments.",
+        "options": []
+      },
+      {
+        "id": "consistency",
+        "name": "Consistency",
+        "description": "reliability of performances.",
+        "options": []
+      },
+      {
+        "id": "dirtiness",
+        "name": "Dirtiness",
+        "description": "likelihood of committing fouls.",
+        "options": []
+      },
+      {
+        "id": "important_matches",
+        "name": "Important Matches",
+        "description": "ability to perform in big games.",
+        "options": []
+      },
+      {
+        "id": "injury_proneness",
+        "name": "Injury Proneness",
+        "description": "susceptibility to injuries.",
+        "options": []
+      },
+      {
+        "id": "versatility",
+        "name": "Versatility",
+        "description": "ability to play out of position.",
+        "options": []
+      }
+    ]
+  },
+  "playstyles": [
+    {
+      "id": "power_shot",
+      "name": "Power Shot",
+      "description": "Standard: power shots are struck harder and faster; PlayStyle+: shots become significantly more powerful and faster.",
+      "category": "Scoring"
+    },
+    {
+      "id": "dead_ball",
+      "name": "Dead Ball",
+      "description": "Standard: set-pieces have increased speed, curve and accuracy with a longer trajectory guide; PlayStyle+: deliveries are even faster and more accurate with a maximum-length guide.",
+      "category": "Scoring"
+    },
+    {
+      "id": "chip_shot",
+      "name": "Chip Shot",
+      "description": "Standard: chip shots travel faster and more accurately; PlayStyle+: chips are significantly faster and exceptionally accurate.",
+      "category": "Scoring"
+    },
+    {
+      "id": "finesse_shot",
+      "name": "Finesse Shot",
+      "description": "Standard: finesse shots are taken faster with additional curve and improved accuracy; PlayStyle+: shots have maximum curve and exceptional accuracy.",
+      "category": "Scoring"
+    },
+    {
+      "id": "power_header",
+      "name": "Power Header",
+      "description": "Standard: headers possess extra power and accuracy; PlayStyle+: headed shots are executed with maximum power and accuracy.",
+      "category": "Scoring"
+    },
+    {
+      "id": "precision_header",
+      "name": "Precision Header",
+      "description": "new in EA FC 26. Standard: attacking headers are more accurate; PlayStyle+: headers deliver lethal power and pinpoint placement.",
+      "category": "Scoring"
+    },
+    {
+      "id": "pinged_pass",
+      "name": "Pinged Pass",
+      "description": "Standard: through passes are precise and travel quickly; PlayStyle+: passes are even more accurate with maximum curve and top speed.",
+      "category": "Passing"
+    },
+    {
+      "id": "incisive_pass",
+      "name": "Incisive Pass",
+      "description": "Standard: flat through-balls are faster; PlayStyle+: the passes are executed even faster.",
+      "category": "Passing"
+    },
+    {
+      "id": "long_ball_pass",
+      "name": "Long Ball Pass",
+      "description": "Standard: lobbed passes travel faster and are harder to intercept; PlayStyle+: they become more accurate and even more difficult to intercept.",
+      "category": "Passing"
+    },
+    {
+      "id": "tiki_taka",
+      "name": "Tiki Taka",
+      "description": "Standard: first-time ground passes are executed accurately using back-heels when appropriate; short passes are highly accurate.",
+      "category": "Passing"
+    },
+    {
+      "id": "whipped_pass",
+      "name": "Whipped Pass",
+      "description": "Standard: crosses are delivered with greater pace, curve and accuracy; PlayStyle+: crosses travel even faster with maximum curve and accuracy.",
+      "category": "Passing"
+    },
+    {
+      "id": "inventive",
+      "name": "Inventive",
+      "description": "new in EA FC 26. Standard: players can execute trivela and no-look passes with improved accuracy; PlayStyle+: passes under pressure attain perfect accuracy.",
+      "category": "Passing"
+    },
+    {
+      "id": "first_touch",
+      "name": "First Touch",
+      "description": "Standard: reduced error when trapping the ball with faster transition to dribbling; PlayStyle+: virtually no error and ultra-fast transition.",
+      "category": "Ball-Control"
+    },
+    {
+      "id": "flair",
+      "name": "Flair",
+      "description": "Standard: fancy passes and shots are performed with improved accuracy; PlayStyle+: they become significantly more precise.",
+      "category": "Ball-Control"
+    },
+    {
+      "id": "press_proven",
+      "name": "Press Proven",
+      "description": "Standard: improved close control when dribbling at jogging speed; PlayStyle+: exceptional tight control under pressure.",
+      "category": "Ball-Control"
+    },
+    {
+      "id": "rapid",
+      "name": "Rapid",
+      "description": "Standard: higher dribbling speed with reduced error; PlayStyle+: even higher speed and lower error.",
+      "category": "Ball-Control"
+    },
+    {
+      "id": "technical",
+      "name": "Technical",
+      "description": "Standard: higher speed while performing controlled sprints; PlayStyle+: even greater speed and more precise turns.",
+      "category": "Ball-Control"
+    },
+    {
+      "id": "trickster",
+      "name": "Trickster",
+      "description": "Standard: grants unique flick skill-moves; PlayStyle+: provides more unique flicks and extra agility.",
+      "category": "Ball-Control"
+    },
+    {
+      "id": "gamechanger",
+      "name": "Gamechanger",
+      "description": "new in EA FC 26. Standard: combines flair and trivela finishing, enabling extraordinary shots; PlayStyle+: increases consistency on fancy shots even from difficult positions.",
+      "category": "Ball-Control"
+    },
+    {
+      "id": "block",
+      "name": "Block",
+      "description": "Standard: increases reach when blocking shots; PlayStyle+: further enhances block reach and success.",
+      "category": "Defending"
+    },
+    {
+      "id": "bruiser",
+      "name": "Bruiser",
+      "description": "Standard: grants greater strength in physical tackles; PlayStyle+: makes tackles significantly more forceful.",
+      "category": "Defending"
+    },
+    {
+      "id": "intercept",
+      "name": "Intercept",
+      "description": "Standard: expands the interception range and improves chances of retaining possession; PlayStyle+: further increases range and retention.",
+      "category": "Defending"
+    },
+    {
+      "id": "jockey",
+      "name": "Jockey",
+      "description": "Standard: improves speed while jockeying; PlayStyle+: speeds up transition from jockey to sprint.",
+      "category": "Defending"
+    },
+    {
+      "id": "slide_tackle",
+      "name": "Slide Tackle",
+      "description": "Standard: allows stopping the ball at the tackler's feet when sliding; PlayStyle+: increases the radius of this effect.",
+      "category": "Defending"
+    },
+    {
+      "id": "anticipate",
+      "name": "Anticipate",
+      "description": "Standard: raises likelihood of winning the ball in normal tackles and controlling it; PlayStyle+: greatly increases this chance.",
+      "category": "Defending"
+    },
+    {
+      "id": "acrobatic",
+      "name": "Acrobatic",
+      "description": "Standard: volleys are more accurate with special animations; PlayStyle+: even more accurate volleys with additional acrobatic animations.",
+      "category": "Defending"
+    },
+    {
+      "id": "aerial",
+      "name": "Aerial",
+      "description": "Standard: players jump higher and have improved aerial presence; PlayStyle+: even higher jump and stronger aerial duels.",
+      "category": "Defending"
+    },
+    {
+      "id": "aerial_fortress",
+      "name": "Aerial Fortress",
+      "description": "new in EA FC 26. Standard: significantly increases jump height and physical presence during defensive headers; PlayStyle+: almost guarantees winning aerial duels in defensive situations.",
+      "category": "Defending"
+    },
+    {
+      "id": "trivela",
+      "name": "Trivela",
+      "description": "Standard: contextually triggers outside-of-the-foot passes and shots; PlayStyle+: same ability with reduced error.",
+      "category": "Physical and Other"
+    },
+    {
+      "id": "relentless",
+      "name": "Relentless",
+      "description": "Standard: reduces stamina loss and improves recovery at half-time; PlayStyle+: dramatically reduces fatigue and improves recovery.",
+      "category": "Physical and Other"
+    },
+    {
+      "id": "quick_step",
+      "name": "Quick Step",
+      "description": "Standard: faster acceleration during sprints; PlayStyle+: accelerates significantly faster.",
+      "category": "Physical and Other"
+    },
+    {
+      "id": "long_throw",
+      "name": "Long Throw",
+      "description": "Standard: throw-ins have more power and distance; PlayStyle+: throws are significantly more powerful with maximum range.",
+      "category": "Physical and Other"
+    },
+    {
+      "id": "enforcer",
+      "name": "Enforcer",
+      "description": "new in EA FC 26. Standard: enhances shoulder-to-shoulder challenges and ball shielding; PlayStyle+: allows shielding off multiple defenders at once.",
+      "category": "Physical and Other"
+    },
+    {
+      "id": "far_throw",
+      "name": "Far Throw",
+      "description": "Standard: goalkeepers can throw the ball further to start attacks.",
+      "category": "Goalkeeping"
+    },
+    {
+      "id": "footwork",
+      "name": "Footwork",
+      "description": "Standard: goalkeepers use their feet to make saves more often, aiding in close-range situations.",
+      "category": "Goalkeeping"
+    },
+    {
+      "id": "cross_claimer",
+      "name": "Cross Claimer",
+      "description": "Standard: goalkeepers aggressively intercept crosses when possible.",
+      "category": "Goalkeeping"
+    },
+    {
+      "id": "rush_out",
+      "name": "Rush Out",
+      "description": "Standard: goalkeepers leave their goal to challenge through-balls; PlayStyle+: even more aggressive and effective.",
+      "category": "Goalkeeping"
+    },
+    {
+      "id": "far_reach",
+      "name": "Far Reach",
+      "description": "Standard: goalkeepers can reach shots further from their body; PlayStyle+: increases reach and reaction time.",
+      "category": "Goalkeeping"
+    },
+    {
+      "id": "quick_reflexes",
+      "name": "Quick Reflexes",
+      "description": "Standard: quicker reaction to shots; PlayStyle+: increases reaction time further.",
+      "category": "Goalkeeping"
+    }
+  ],
+  "teamInstructions": {
+    "inPossession": [
+      {
+        "id": "passing_directness",
+        "name": "Passing Directness",
+        "description": "Options: *Much Shorter*, *Shorter*, *Balanced*, *More Direct*, *Much More Direct*. Controls pass length and speed.",
+        "options": [
+          "Much Shorter",
+          "Shorter",
+          "Balanced",
+          "More Direct",
+          "Much More Direct"
+        ]
+      },
+      {
+        "id": "tempo",
+        "name": "Tempo",
+        "description": "Options: *Lower*, *Standard*, *Higher*. Determines how quickly the team moves the ball and makes decisions.",
+        "options": [
+          "Lower",
+          "Standard",
+          "Higher"
+        ]
+      },
+      {
+        "id": "time_wasting",
+        "name": "Time Wasting",
+        "description": "Options: *Less Often*, *Standard*, *More Often*. Governs deliberate time-wasting when ahead.",
+        "options": [
+          "Less Often",
+          "Standard",
+          "More Often"
+        ]
+      },
+      {
+        "id": "attacking_transition",
+        "name": "Attacking Transition",
+        "description": "Options: *Counter-Attack*, *Standard*, *Patient Build-Up*. Sets how the team reacts immediately after winning possession.",
+        "options": [
+          "Counter-Attack",
+          "Standard",
+          "Patient Build-Up"
+        ]
+      },
+      {
+        "id": "attacking_width",
+        "name": "Attacking Width",
+        "description": "Options: *Much Narrower*, *Narrower*, *Standard*, *Wider*, *Much Wider*. Controls how spread out the team becomes in attack.",
+        "options": [
+          "Much Narrower",
+          "Narrower",
+          "Standard",
+          "Wider",
+          "Much Wider"
+        ]
+      },
+      {
+        "id": "creative_freedom",
+        "name": "Creative Freedom",
+        "description": "Options: *More Disciplined*, *Balanced*, *More Expressive*. Dictates the amount of risk-taking and flair allowed.",
+        "options": [
+          "More Disciplined",
+          "Balanced",
+          "More Expressive"
+        ]
+      },
+      {
+        "id": "play_for_set_pieces",
+        "name": "Play for Set Pieces",
+        "description": "Options: *Keep Ball in Play*, *Standard*. Chooses whether to deliberately win set-pieces or maintain possession.",
+        "options": [
+          "Keep Ball in Play",
+          "Standard"
+        ]
+      },
+      {
+        "id": "build_up_strategy",
+        "name": "Build-Up Strategy",
+        "description": "Options: *Play Through Press*, *Mixed*, *Direct*. Determines whether to pass through pressing opponents or bypass them.",
+        "options": [
+          "Play Through Press",
+          "Mixed",
+          "Direct"
+        ]
+      },
+      {
+        "id": "goal_kicks",
+        "name": "Goal Kicks",
+        "description": "Options: *Short*, *Mixed*, *Long*. Sets how the goalkeeper restarts play.",
+        "options": [
+          "Short",
+          "Mixed",
+          "Long"
+        ]
+      },
+      {
+        "id": "gk_distribution_speed",
+        "name": "GK Distribution (Speed)",
+        "description": "Options: *Slower*, *Balanced*, *Faster*. Dictates how quickly the goalkeeper releases the ball after collecting it.",
+        "options": [
+          "Slower",
+          "Balanced",
+          "Faster"
+        ]
+      },
+      {
+        "id": "gk_distribution_target",
+        "name": "GK Distribution (Target)",
+        "description": "Options: *Centre-Backs*, *Full-Backs*, *Midfielders*, *Forwards*. Decides which teammates receive distribution.",
+        "options": [
+          "Centre-Backs",
+          "Full-Backs",
+          "Midfielders",
+          "Forwards"
+        ]
+      },
+      {
+        "id": "pass_reception",
+        "name": "Pass Reception",
+        "description": "Options: *Balanced*, *Overlapped*. Controls how players position themselves to receive passes; overlapped positions into pockets.",
+        "options": [
+          "Balanced",
+          "Overlapped"
+        ]
+      },
+      {
+        "id": "dribbling",
+        "name": "Dribbling",
+        "description": "Options: *Reduced*, *Balanced*, *Encouraged*. Regulates how often players attempt to dribble past opponents.",
+        "options": [
+          "Reduced",
+          "Balanced",
+          "Encouraged"
+        ]
+      },
+      {
+        "id": "supporting_runs",
+        "name": "Supporting Runs",
+        "description": "Options: *Both Flanks*, *One Flank*, *Balanced*. Specifies where supporting players make runs to aid attacks.",
+        "options": [
+          "Both Flanks",
+          "One Flank",
+          "Balanced"
+        ]
+      },
+      {
+        "id": "progress_through",
+        "name": "Progress Through",
+        "description": "Options: *Left*, *Balanced*, *Right*. Sets the preferred flank for moving the ball forward.",
+        "options": [
+          "Left",
+          "Balanced",
+          "Right"
+        ]
+      },
+      {
+        "id": "patience",
+        "name": "Patience",
+        "description": "Options: *Work Ball Into Box*, *Balanced*, *Less Often*. Governs how patiently the team works the ball in the final third.",
+        "options": [
+          "Work Ball Into Box",
+          "Balanced",
+          "Less Often"
+        ]
+      },
+      {
+        "id": "shots_from_distance",
+        "name": "Shots from Distance",
+        "description": "Options: *Reduced*, *Balanced*, *Encouraged*. Adjusts the frequency of long-range shots.",
+        "options": [
+          "Reduced",
+          "Balanced",
+          "Encouraged"
+        ]
+      },
+      {
+        "id": "crossing_style",
+        "name": "Crossing Style",
+        "description": "Options: *Low Crosses*, *Balanced*, *High Crosses*. Chooses the type of crosses delivered into the box.",
+        "options": [
+          "Low Crosses",
+          "Balanced",
+          "High Crosses"
+        ]
+      }
+    ],
+    "outOfPossession": [
+      {
+        "id": "line_of_engagement",
+        "name": "Line of Engagement",
+        "description": "Options: *High Press*, *Mid Block*, *Low Block*. Determines where on the pitch pressing begins.",
+        "options": [
+          "High Press",
+          "Mid Block",
+          "Low Block"
+        ]
+      },
+      {
+        "id": "defensive_line",
+        "name": "Defensive Line",
+        "description": "Options: *Deeper*, *Standard*, *Higher*, *Much Higher*. Sets how high the defensive line holds.",
+        "options": [
+          "Deeper",
+          "Standard",
+          "Higher",
+          "Much Higher"
+        ]
+      },
+      {
+        "id": "defensive_line_behaviour",
+        "name": "Defensive Line Behaviour",
+        "description": "Options: *Balanced*, *Offside Trap*, *Step Up*. Controls how defenders respond to attacking runs.",
+        "options": [
+          "Balanced",
+          "Offside Trap",
+          "Step Up"
+        ]
+      },
+      {
+        "id": "trigger_press",
+        "name": "Trigger Press",
+        "description": "Options: *Less Often*, *Balanced*, *More Often*. Determines how frequently players close down opponents.",
+        "options": [
+          "Less Often",
+          "Balanced",
+          "More Often"
+        ]
+      },
+      {
+        "id": "defensive_transition",
+        "name": "Defensive Transition",
+        "description": "Options: *Counter-Press*, *Standard*, *Regroup*. Sets the team's approach immediately after losing possession.",
+        "options": [
+          "Counter-Press",
+          "Standard",
+          "Regroup"
+        ]
+      },
+      {
+        "id": "tackling",
+        "name": "Tackling",
+        "description": "Options: *Ease Off*, *Standard*, *Aggressive*. Adjusts tackling intensity.",
+        "options": [
+          "Ease Off",
+          "Standard",
+          "Aggressive"
+        ]
+      },
+      {
+        "id": "pressing_trap",
+        "name": "Pressing Trap",
+        "description": "Options: *Balanced*, *Active*. Configures whether the team sets coordinated pressing traps.",
+        "options": [
+          "Balanced",
+          "Active"
+        ]
+      },
+      {
+        "id": "short_goalkeeper_distribution",
+        "name": "Short Goalkeeper Distribution",
+        "description": "Options: *Yes*, *No*. Specifies whether forwards press opposing goalkeepers to force long kicks.",
+        "options": [
+          "Yes",
+          "No"
+        ]
+      },
+      {
+        "id": "cross_engagement",
+        "name": "Cross Engagement",
+        "description": "Options: *Hold Position*, *Balanced*, *Contest*. Controls how defenders deal with crosses.",
+        "options": [
+          "Hold Position",
+          "Balanced",
+          "Contest"
+        ]
+      }
+    ]
+  },
+  "roles": {
+    "goalkeeper": [
+      {
+        "id": "goalkeeper",
+        "name": "Goalkeeper",
+        "description": "Balanced role; distributes according to team strategy.",
+        "options": []
+      },
+      {
+        "id": "line_holding_keeper",
+        "name": "Line-Holding Keeper",
+        "description": "New; remains in the box, avoiding sweeper actions.",
+        "options": []
+      },
+      {
+        "id": "no_nonsense_goalkeeper",
+        "name": "No-Nonsense Goalkeeper",
+        "description": "New; safety-first distribution and risk-averse play.",
+        "options": []
+      },
+      {
+        "id": "sweeper_keeper",
+        "name": "Sweeper Keeper",
+        "description": "Intercepts balls outside the box; proactive in defence.",
+        "options": []
+      },
+      {
+        "id": "ball_playing_goalkeeper",
+        "name": "Ball-Playing Goalkeeper",
+        "description": "Joins the build-up phase like an outfield player.",
+        "options": []
+      }
+    ],
+    "centre_back": [
+      {
+        "id": "centre_back",
+        "name": "Centre-Back",
+        "description": "Balanced defender who assists in regaining possession.",
+        "options": []
+      },
+      {
+        "id": "no_nonsense_cb",
+        "name": "No-Nonsense CB",
+        "description": "Clears danger and avoids risky passes.",
+        "options": []
+      },
+      {
+        "id": "covering_cb",
+        "name": "Covering CB",
+        "description": "Holds the defensive line and reacts to attackers.",
+        "options": []
+      },
+      {
+        "id": "stopping_cb",
+        "name": "Stopping CB",
+        "description": "Steps out aggressively to challenge attackers early.",
+        "options": []
+      },
+      {
+        "id": "ball_playing_cb",
+        "name": "Ball-Playing CB",
+        "description": "Plays line-breaking passes and dribbles forward.",
+        "options": []
+      },
+      {
+        "id": "overlapping_cb",
+        "name": "Overlapping CB",
+        "description": "Moves into wide areas to support attacks.",
+        "options": []
+      },
+      {
+        "id": "advanced_cb",
+        "name": "Advanced CB",
+        "description": "New; transitions into a defensive-midfield role during build-up.",
+        "options": []
+      },
+      {
+        "id": "wide_cb",
+        "name": "Wide CB",
+        "description": "and Covering/Stopping variations. Provides width and recycling options.",
+        "options": []
+      }
+    ],
+    "full_back": [
+      {
+        "id": "full_back",
+        "name": "Full-Back",
+        "description": "Balanced; supports attacks with overlaps.",
+        "options": []
+      },
+      {
+        "id": "holding_full_back",
+        "name": "Holding Full-Back",
+        "description": "New; stays deeper when pressing.",
+        "options": []
+      },
+      {
+        "id": "inside_full_back",
+        "name": "Inside Full-Back",
+        "description": "New; tucks behind centre-backs for build-up.",
+        "options": []
+      },
+      {
+        "id": "inverted_full_back",
+        "name": "Inverted Full-Back",
+        "description": "Moves into midfield to create overloads.",
+        "options": []
+      },
+      {
+        "id": "pressing_full_back",
+        "name": "Pressing Full-Back",
+        "description": "New; supports high press and operates like a defensive winger.",
+        "options": []
+      }
+    ],
+    "wing_back": [
+      {
+        "id": "wing_back",
+        "name": "Wing-Back",
+        "description": "Combines full-back and winger duties; overlaps and supports attacks.",
+        "options": []
+      },
+      {
+        "id": "holding_wing_back",
+        "name": "Holding Wing-Back",
+        "description": "New; stays deeper during pressing phases.",
+        "options": []
+      },
+      {
+        "id": "inside_wing_back",
+        "name": "Inside Wing-Back",
+        "description": "New; shuttles inside to support central build-up.",
+        "options": []
+      },
+      {
+        "id": "inverted_wing_back",
+        "name": "Inverted Wing-Back",
+        "description": "Plays like a defensive midfielder, moving centrally.",
+        "options": []
+      },
+      {
+        "id": "pressing_wing_back",
+        "name": "Pressing Wing-Back",
+        "description": "New; presses opponents high up the pitch.",
+        "options": []
+      },
+      {
+        "id": "playmaking_wing_back",
+        "name": "Playmaking Wing-Back",
+        "description": "New; acts as a central hub of passing, creating chances from deep.",
+        "options": []
+      },
+      {
+        "id": "advanced_wing_back",
+        "name": "Advanced Wing-Back",
+        "description": "New; stays high and wide, similar to a wide midfielder.",
+        "options": []
+      }
+    ],
+    "defensive_midfield": [
+      {
+        "id": "defensive_midfielder",
+        "name": "Defensive Midfielder",
+        "description": "Shields the defence, recycles possession.",
+        "options": []
+      },
+      {
+        "id": "dropping_dm",
+        "name": "Dropping DM",
+        "description": "New; drops into the backline when under pressure.",
+        "options": []
+      },
+      {
+        "id": "screening_dm",
+        "name": "Screening DM",
+        "description": "New; holds central zones to cut off passing lanes.",
+        "options": []
+      },
+      {
+        "id": "wide_covering_dm",
+        "name": "Wide Covering DM",
+        "description": "New; shifts wide to help full-backs.",
+        "options": []
+      },
+      {
+        "id": "half_back",
+        "name": "Half-Back",
+        "description": "Drops between centre-backs during build-up.",
+        "options": []
+      },
+      {
+        "id": "pressing_dm",
+        "name": "Pressing DM",
+        "description": "New; steps forward aggressively to press.",
+        "options": []
+      },
+      {
+        "id": "deep_lying_playmaker",
+        "name": "Deep-Lying Playmaker",
+        "description": "Sits deep and initiates attacks with precise passes.",
+        "options": []
+      }
+    ],
+    "central_midfield": [
+      {
+        "id": "central_midfielder",
+        "name": "Central Midfielder",
+        "description": "Balanced role supporting defence and attack.",
+        "options": []
+      },
+      {
+        "id": "screening_cm",
+        "name": "Screening CM",
+        "description": "New; holds the central zone defensively.",
+        "options": []
+      },
+      {
+        "id": "wide_covering_cm",
+        "name": "Wide Covering CM",
+        "description": "New; shifts wide to cover flanks.",
+        "options": []
+      },
+      {
+        "id": "box_to_box_midfielder",
+        "name": "Box-to-Box Midfielder",
+        "description": "Covers the entire pitch, contributing in both boxes.",
+        "options": []
+      },
+      {
+        "id": "box_to_box_playmaker",
+        "name": "Box-to-Box Playmaker",
+        "description": "New; creative variant of the B2B midfielder.",
+        "options": []
+      },
+      {
+        "id": "channel_midfielder",
+        "name": "Channel Midfielder",
+        "description": "New; makes under-lapping runs into wide channels.",
+        "options": []
+      },
+      {
+        "id": "midfield_playmaker",
+        "name": "Midfield Playmaker",
+        "description": "New; creative link who may move into attacking midfield.",
+        "options": []
+      },
+      {
+        "id": "pressing_cm",
+        "name": "Pressing CM",
+        "description": "New; steps up to press opponents high.",
+        "options": []
+      }
+    ],
+    "wide_midfield": [
+      {
+        "id": "wide_midfielder",
+        "name": "Wide Midfielder",
+        "description": "Plays deeper and delivers crosses from wide areas.",
+        "options": []
+      },
+      {
+        "id": "tracking_wide_midfielder",
+        "name": "Tracking Wide Midfielder",
+        "description": "New; drops deep to defend.",
+        "options": []
+      },
+      {
+        "id": "wide_central_midfielder",
+        "name": "Wide Central Midfielder",
+        "description": "New; operates wide within a midfield trio.",
+        "options": []
+      },
+      {
+        "id": "wide_outlet_midfielder",
+        "name": "Wide Outlet Midfielder",
+        "description": "New; stays high to provide an outlet without defensive duties.",
+        "options": []
+      }
+    ],
+    "attacking_midfield": [
+      {
+        "id": "attacking_midfielder",
+        "name": "Attacking Midfielder",
+        "description": "Operates between the lines to create space.",
+        "options": []
+      },
+      {
+        "id": "tracking_am",
+        "name": "Tracking AM",
+        "description": "New; drops deep to help defend.",
+        "options": []
+      },
+      {
+        "id": "advanced_playmaker",
+        "name": "Advanced Playmaker",
+        "description": "Creates chances in advanced central areas.",
+        "options": []
+      },
+      {
+        "id": "central_outlet_am",
+        "name": "Central Outlet AM",
+        "description": "New; remains high, avoiding defensive work.",
+        "options": []
+      },
+      {
+        "id": "splitting_outlet_am",
+        "name": "Splitting Outlet AM",
+        "description": "New; stays high and drifts wide to aid counters.",
+        "options": []
+      },
+      {
+        "id": "free_role",
+        "name": "Free Role",
+        "description": "New; roams creatively across the attacking third.",
+        "options": []
+      }
+    ],
+    "winger": [
+      {
+        "id": "winger",
+        "name": "Winger",
+        "description": "Stretches play on the flank and delivers crosses.",
+        "options": []
+      },
+      {
+        "id": "half_space_winger",
+        "name": "Half-Space Winger",
+        "description": "New; cuts inside into half-spaces.",
+        "options": []
+      },
+      {
+        "id": "inside_winger",
+        "name": "Inside Winger",
+        "description": "New; similar to half-space winger but with slightly different movement patterns.",
+        "options": []
+      },
+      {
+        "id": "inverting_outlet_winger",
+        "name": "Inverting Outlet Winger",
+        "description": "New; stays high and moves inside to support counters.",
+        "options": []
+      },
+      {
+        "id": "tracking_winger",
+        "name": "Tracking Winger",
+        "description": "New; drops deep to provide defensive cover.",
+        "options": []
+      },
+      {
+        "id": "wide_outlet_winger",
+        "name": "Wide Outlet Winger",
+        "description": "New; stays high and wide, avoiding defensive duties.",
+        "options": []
+      },
+      {
+        "id": "wide_playmaker",
+        "name": "Wide Playmaker",
+        "description": "New; starts wide and drifts inside to create chances.",
+        "options": []
+      },
+      {
+        "id": "wide_forward",
+        "name": "Wide Forward",
+        "description": "New; wide attacker who makes runs into the box.",
+        "options": []
+      },
+      {
+        "id": "inside_forward",
+        "name": "Inside Forward",
+        "description": "Moves inside from the wing to attack central spaces.",
+        "options": []
+      }
+    ],
+    "striker": [
+      {
+        "id": "false_nine",
+        "name": "False Nine",
+        "description": "Drops deep to create space and play-make.",
+        "options": []
+      },
+      {
+        "id": "deep_lying_forward",
+        "name": "Deep-Lying Forward",
+        "description": "Links midfield and attack, distributing play.",
+        "options": []
+      },
+      {
+        "id": "half_space_forward",
+        "name": "Half-Space Forward",
+        "description": "New; wide attacker who cuts inside into channels.",
+        "options": []
+      },
+      {
+        "id": "second_striker",
+        "name": "Second Striker",
+        "description": "New; drops deep early and then runs forward to score.",
+        "options": []
+      },
+      {
+        "id": "channel_forward",
+        "name": "Channel Forward",
+        "description": "New; runs into wide channels, stretching defences.",
+        "options": []
+      },
+      {
+        "id": "centre_forward",
+        "name": "Centre Forward",
+        "description": "Classic number 9 who leads the line.",
+        "options": []
+      },
+      {
+        "id": "central_outlet_cf",
+        "name": "Central Outlet CF",
+        "description": "New; stays high and central, contributing little defensively.",
+        "options": []
+      },
+      {
+        "id": "splitting_outlet_cf",
+        "name": "Splitting Outlet CF",
+        "description": "New; stays high and drifts wide to aid counter-attacks.",
+        "options": []
+      },
+      {
+        "id": "tracking_cf",
+        "name": "Tracking CF",
+        "description": "New; drops deep to help defend.",
+        "options": []
+      },
+      {
+        "id": "target_forward",
+        "name": "Target Forward",
+        "description": "Provides a physical presence and aerial threat.",
+        "options": []
+      },
+      {
+        "id": "poacher",
+        "name": "Poacher",
+        "description": "Stays central and looks to finish chances.",
+        "options": []
+      }
+    ]
+  },
+  "duties": [
+    {
+      "id": "attack",
+      "name": "Attack",
+      "description": "Players on an Attack duty make aggressive forward runs, take risks and prioritise scoring or creating goals. This is the highest-risk duty.",
+      "options": []
+    },
+    {
+      "id": "support",
+      "name": "Support",
+      "description": "Balances attacking and defensive responsibilities; players contribute to building attacks while retaining positional discipline.",
+      "options": []
+    },
+    {
+      "id": "defend",
+      "name": "Defend",
+      "description": "Players hold position, maintain shape and focus on stopping opponents. Suitable for maintaining solidity.",
+      "options": []
+    },
+    {
+      "id": "stopper",
+      "name": "Stopper",
+      "description": "Centre-back-only duty; the defender steps out of the line to engage attackers aggressively, attempting to win the ball early.",
+      "options": []
+    },
+    {
+      "id": "cover",
+      "name": "Cover",
+      "description": "Another centre-back-only duty; the defender stays deeper to sweep up behind the defensive line.",
+      "options": []
+    },
+    {
+      "id": "automatic",
+      "name": "Automatic",
+      "description": "Duty that changes based on team mentality: acts like Attack in attacking mentalities and like Defend in defensive ones.",
+      "options": []
+    }
+  ]
+}
