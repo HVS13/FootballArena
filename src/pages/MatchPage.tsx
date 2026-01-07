@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GameEngineAgent, SubstitutionStatus } from '../agents/GameEngineAgent';
+import { GameEngineAgent, RestartInfo, SubstitutionStatus } from '../agents/GameEngineAgent';
 import PitchCanvas from '../components/PitchCanvas';
 import { CommentaryLine, MatchStats } from '../domain/matchTypes';
 import { RenderState, TeamState } from '../domain/simulationTypes';
@@ -18,6 +18,12 @@ const formatClock = (timeSeconds: number) => {
 };
 
 const formatPercent = (value: number) => `${value.toFixed(1)}%`;
+
+const formatRestartLabel = (value: RestartInfo['type']) =>
+  value
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 
 const buildRosterNameMap = (setup: TeamSetupState | null) => {
   const map: Record<string, Record<string, string>> = {};
@@ -59,10 +65,12 @@ const MatchPage = () => {
   const [matchStats, setMatchStats] = useState<MatchStats | null>(null);
   const [commentary, setCommentary] = useState<CommentaryLine[]>([]);
   const [subStatus, setSubStatus] = useState<SubstitutionStatus | null>(null);
+  const [restartInfo, setRestartInfo] = useState<RestartInfo | null>(null);
   const [subSelections, setSubSelections] = useState<Record<string, SubSelection>>({});
   const [subErrors, setSubErrors] = useState<Record<string, string>>({});
   const engineRef = useRef<GameEngineAgent | null>(null);
   const initialSetupRef = useRef<TeamSetupState | null>(state.teamSetup);
+  const initialEnvironmentRef = useRef(state.environment);
 
   const rosterNameMap = useMemo(() => buildRosterNameMap(state.teamSetup), [state.teamSetup]);
 
@@ -81,12 +89,14 @@ const MatchPage = () => {
   useEffect(() => {
     const engine = new GameEngineAgent({
       onRender: setRenderState,
-      onMatchUpdate: (stats, lines) => {
+      onMatchUpdate: (stats, lines, restart) => {
         setMatchStats(stats);
         setCommentary(lines);
         setSubStatus(engine.getSubstitutionStatus());
+        setRestartInfo(restart);
       },
-      teamSetup: initialSetupRef.current ?? undefined
+      teamSetup: initialSetupRef.current ?? undefined,
+      environment: initialEnvironmentRef.current
     });
     engineRef.current = engine;
     engine.start();
@@ -190,6 +200,12 @@ const MatchPage = () => {
           <div>Match Time: {renderState ? formatClock(renderState.time) : '00:00'}</div>
           <div>Speed: x{state.simSpeed}</div>
         </div>
+        {restartInfo && (
+          <div className="restart-banner">
+            <strong>{formatRestartLabel(restartInfo.type)}</strong> for {restartInfo.teamName} ·{' '}
+            {restartInfo.remaining.toFixed(1)}s
+          </div>
+        )}
         <PitchCanvas renderState={renderState} />
         <div className="controls-row" style={{ marginTop: '16px' }}>
           {[2, 4, 8, 16].map((speed) => (

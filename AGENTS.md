@@ -9,6 +9,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
  - Initialize a match with teams, formation data, and player statistics imported by the DataImportAgent.
  - Maintain the clock and process simulation frames at real-time speed, with support for speed multipliers (x2, x4, x8, x16) and pause/resume.
  - Communicate with PhysicsAgent and RulesAgent to handle in-play events and ensure compliance with official FIFA rules.
+ - Drive the possession-based action loop (carries, targeted passes, shots) and coordinate restarts (throw-ins, corners, free kicks, penalties, kick-offs).
  - Trigger commentary updates to UIAgent and record match statistics for StatsAgent.
 * **Interactions:** Calls PhysicsAgent for position and movement updates, consults RulesAgent for rule enforcement, notifies UIAgent about state changes, and receives commands from PlaybackAgent (speed changes, pause, resume).
 
@@ -17,7 +18,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
 * **Purpose:** Implements realistic physics for the ball and players. This includes movement, collisions, and ball trajectory.
 * **Responsibilities:**
  - Calculate player movements based on acceleration, agility, balance, pace, stamina, and strength attributes.
- - Model ball motion with spin, friction, and rebound effects. Ensure collisions between ball and players, pitch boundaries, and goal posts are realistic.
+ - Model ball motion with spin, friction, rebound effects, and environmental factors (wind, weather, pitch condition). Ensure collisions between ball and players, pitch boundaries, and goal posts are realistic.
  - Provide position updates at each simulation frame to GameEngineAgent.
 * **Interactions:** Receives target actions from GameEngineAgent (e.g., pass, shot, run) and returns updated positions and velocities. Works closely with RulesAgent to detect offside and fouls.
 
@@ -38,6 +39,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
  - Expose drag-and-drop UI components for formation selection and player positioning.
  - Present lists of available team instructions, roles, and duties (loaded by DataImportAgent) with concise descriptions.
  - Capture user choices and produce a tactical plan that the GameEngineAgent can simulate.
+ - Collect match environment settings (weather, wind, pitch condition) including presets and randomisation options.
 * **Interactions:** Interacts with UIAgent for front-end elements, obtains lists from DataImportAgent, and passes final tactical configurations to GameEngineAgent.
 
 ## RulesAgent
@@ -45,6 +47,8 @@ This project organizes the simulation game into distinct "agents." Each agent en
 * **Purpose:** Encapsulates the official FIFA rules, ensuring the simulation abides by them.
 * **Responsibilities:**
  - Implement rule checks for offside, fouls, free kicks, penalties, throw-ins, goal kicks, and substitutions. Align these checks with team instructions and player roles as needed.
+ - Provide restart decisions and placement data for set pieces and kick-offs.
+ - Apply pressure modifiers so defenders influence pass/shot outcomes.
  - Enforce substitution limits and stoppage time based on match context.
  - Work with PhysicsAgent to detect rule infractions and with CommentaryAgent to provide context for calls.
 * **Interactions:** Receives event data from PhysicsAgent and GameEngineAgent; communicates decisions back to GameEngineAgent and CommentaryAgent.

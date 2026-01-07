@@ -18,20 +18,26 @@ This file outlines the implementation tasks required to deliver the first iterat
  - Design drag-and-drop components for selecting formations and placing players on the pitch.
  - Display lists of roles and duties, allowing users to assign them to players.
  - Capture team instructions selections and store them alongside formation data.
+ - Add match environment controls (weather, wind, temperature, pitch condition) with presets and randomize support.
 
 4. **Develop PhysicsAgent**
  - Implement physics models for players and ball. Use player attributes to influence speed, turning, and stamina consumption.
  - Handle collisions with pitch boundaries and other players.
  - Provide an API to compute movement updates given an action (run, pass, shot, tackle).
+ - Incorporate weather, wind, and pitch condition modifiers in physics updates.
 
 5. **Create GameEngineAgent**
  - Manage the simulation loop and coordinate with PhysicsAgent and RulesAgent.
  - Support speed multipliers (x2, x4, x8, x16) and pausing.
  - Schedule match events (kick-off, half-time, full-time) and maintain the game clock.
+ - Build a possession-driven action loop (carry, pass, shoot) and pause for restarts.
+ - Add targeted passing logic with pressure-aware decision making.
 
 6. **Implement RulesAgent**
  - Encode basic FIFA rules: offside detection, fouls, free kicks, penalties, throw-ins, goal kicks, and substitution limits.
  - Integrate with PhysicsAgent to identify rule violations.
+ - Provide restart placement data for set pieces and kick-offs.
+ - Apply pressure modifiers to pass/shot outcomes.
 
 7. **Create StatsAgent**
  - Record match events and accumulate per-player and team statistics (e.g., passes completed, shots on target, tackles won).
@@ -60,3 +66,4 @@ This file outlines the implementation tasks required to deliver the first iterat
 * **Refactor for multiplayer.** Design and implement NetworkingAgent to handle remote players.
 * **Advanced AI.** Add intelligent behaviours for computer-controlled teams.
 * **Procedural commentary.** Enhance CommentaryAgent with richer, more context-aware descriptions.
+* **Match environment factors.** Model weather, wind, and pitch conditions that alter ball physics and fatigue.

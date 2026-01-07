@@ -19,6 +19,7 @@ Implementing a realistic football simulation game demands a wide range of techni
 | **Kinematics & Dynamics** | Model player and ball movement using velocity, acceleration, momentum, and collision detection. Recognize how player attributes (e.g., acceleration, pace, stamina) influence motion. |
 | **Collision Detection and Response** | Detect and handle collisions between ball, players, and boundaries with realistic rebound angles and speeds. |
 | **Numerical Integration** | Use stable integration methods (e.g., Euler or Verlet) to update positions at each time step, taking into account simulation speed multipliers. |
+| **Environment Modeling** | Apply weather, wind, temperature, and pitch condition effects to physics and fatigue. |
 
 ## Domain Knowledge
 
@@ -52,6 +53,8 @@ Implementing a realistic football simulation game demands a wide range of techni
 |---|---|
 | **Finite State Machines** | Represent player behaviours (idle, run, dribble, pass, shoot, tackle) and transitions based on game context. |
 | **Decision Making** | Implement simple AI for computer-controlled teams in multiplayer or future single-player modes. This may involve heuristics or rule-based systems using player attributes and tactical instructions. |
+| **Possession Logic** | Model ball possession, action selection (carry, pass, shoot), and stoppage handling to keep the simulation coherent. |
+| **Spatial Evaluation** | Score passing options using distance, pressure, and tactical instructions to create realistic ball progression. |
 | **Commentary Generation** | Design templates for commentary that describe events accurately and engagingly. At this stage, simple rule-based phrases are sufficient, but the system should support richer language later. |
 
 ## Testing & Deployment

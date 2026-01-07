@@ -1,4 +1,6 @@
-﻿export type Vector2 = {
+import { PlayerAttributes } from './types';
+
+export type Vector2 = {
   x: number;
   y: number;
 };
@@ -19,6 +21,9 @@ export type PlayerState = {
   targetPosition: Vector2;
   targetTimer: number;
   radius: number;
+  attributes?: PlayerAttributes;
+  playstyles?: string[];
+  playstylesPlus?: string[];
 };
 
 export type BallState = {

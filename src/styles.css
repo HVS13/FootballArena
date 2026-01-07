@@ -244,3 +244,16 @@ body {
   padding-bottom: 8px;
   margin-bottom: 6px;
 }
+
+.restart-banner {
+  margin: 12px 0 4px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  font-weight: 600;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}

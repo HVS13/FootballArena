@@ -16,6 +16,8 @@ The recommended JSON format uses a top-level `teams` array:
           "id": "10",
           "name": "Player Name",
           "positions": ["ST", "AM"],
+          "playstyles": ["Power Shot", "Rapid"],
+          "playstylesPlus": ["Finesse Shot"],
           "attributes": {
             "Finishing": 15,
             "Pace": 14,
@@ -32,6 +34,8 @@ You may also provide a top-level `players` array (single team), but `teams` is p
 
 Attribute values can be on a 1-20 scale or 0-100 scale. Values on 1-20 are scaled to 0-100 automatically.
 
+Playstyles are optional. You can provide a list of EA FC PlayStyle names or ids in `playstyles` and `playstylesPlus`.
+
 ## CSV Format
 
 The CSV format uses a header row. Minimum columns:
@@ -41,11 +45,16 @@ The CSV format uses a header row. Minimum columns:
 - `positions` (required, separated by `|`, `;`, or `/`)
 - One column per attribute (use Football Manager attribute names)
 
+Optional playstyle columns:
+
+- `playstyles` (separated by `|`, `;`, or `/`)
+- `playstylesPlus` (separated by `|`, `;`, or `/`)
+
 Example:
 
 ```csv
-team,name,positions,Finishing,Pace,Stamina
-Team A,Player Name,ST|AM,15,14,13
+team,name,positions,playstyles,playstylesPlus,Finishing,Pace,Stamina
+Team A,Player Name,ST|AM,Power Shot|Rapid,Finesse Shot,15,14,13
 ```
 
 Missing required attributes will trigger validation errors.

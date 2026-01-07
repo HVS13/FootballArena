@@ -7,6 +7,8 @@ export type PlayerImport = {
   name: string;
   positions: string[];
   attributes: PlayerAttributes;
+  playstyles?: string[];
+  playstylesPlus?: string[];
 };
 
 export type TeamImport = {

@@ -12,6 +12,8 @@ Key features include:
 * **2D match view:** A top-down pitch with circular player icons (and foot indicators) similar to Football Manager. Live commentary and real-time statistics are displayed below the pitch.
 * **Adjustable match speed:** Users can toggle simulation speed between x2, x4, x8, and x16, or pause/resume the match at any time.
 * **Substitutions and rule enforcement:** The game enforces official FIFA rules and allows in-game substitutions with the correct limits.
+* **Possession-driven actions:** The simulation progresses through possession, with carries, targeted passes, shots, and stoppages flowing from the ball carrier under pressure.
+* **Match environment effects:** Weather, wind, temperature, and pitch conditions influence ball physics and player fatigue.
 
 ## v0.1 Scope and Acceptance Criteria
 
@@ -19,7 +21,8 @@ Key features include:
 - Local hotseat only (two users on one device).
 - Player import with validation and 0-100 scaling.
 - FM26 team instructions, roles, and duties available in UI.
-- EA FC 26 PlayStyles available for data/modeling (no gameplay effects required yet).
+- EA FC 26 PlayStyles available and applied to gameplay (passing, shooting, dribbling, physicality).
+- Match environment configuration available in setup (weather, wind, temperature, pitch condition, presets, randomize).
 - 2D top-down pitch with players as circles + foot indicator, officials visible.
 - Real-time simulation with fixed-tick engine, rendering at 60fps.
 - Speed controls x2/x4/x8/x16 and pause/resume.
