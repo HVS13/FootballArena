@@ -14,6 +14,7 @@ type DecisionContext = {
   ignoreOffside?: boolean;
   forceAerial?: boolean;
   setPiece?: 'corner' | 'free_kick' | 'throw_in' | 'goal_kick' | 'kick_off' | 'penalty';
+  passLeadPosition?: Vector2;
 };
 
 export type RuleDecision = {
@@ -25,6 +26,7 @@ export type RuleDecision = {
   stats: DecisionStats;
   advantage?: boolean;
   card?: 'yellow' | 'red';
+  shotOutcome?: 'goal' | 'on_target' | 'off_target' | 'blocked';
   ballPosition?: Vector2;
   ballVelocity?: Vector2;
   restartType?: 'throw_in' | 'goal_kick' | 'corner' | 'free_kick' | 'penalty' | 'kick_off';
@@ -234,6 +236,10 @@ export class RulesAgent {
     passChance *= playstyleMultiplier(passer, 'pinged_pass', 1.04, 1.08);
     passChance *= playstyleMultiplier(passer, 'long_ball_pass', 1.03, 1.06);
 
+    if (context?.passLeadPosition) {
+      passChance *= 0.92;
+    }
+
     const receiverPressure = receiver ? this.getPressure(state, receiver) : 0;
     const receivePenalty = clamp(receiverPressure * 0.2, 0, 0.2);
     passChance *= 1 - receivePenalty;
@@ -246,10 +252,11 @@ export class RulesAgent {
     const intercepted =
       interceptCandidate ? Math.random() < interceptCandidate.chance : false;
     const success = Math.random() < passChance;
+    const leadTarget = context?.passLeadPosition ? this.clampPosition(context.passLeadPosition) : null;
     const passTarget =
       success && receiver
         ? this.applyTargetScatter(
-            receiver.position,
+            leadTarget ?? receiver.position,
             this.getPassScatter(passer, receiver, instructions, passChance),
             7
           )
@@ -447,6 +454,7 @@ export class RulesAgent {
         playerName: shooter.name,
         commentary: `${block.player.name} gets in the way.`,
         stats: { shot: true },
+        shotOutcome: 'blocked',
         ballPosition: { ...block.player.position },
         ballVelocity: deflectionVelocity,
         chanceQuality
@@ -462,6 +470,7 @@ export class RulesAgent {
         playerName: shooter.name,
         commentary: `Goal! ${shooter.name} finishes for ${this.resolveTeamName(state, teamId)}.`,
         stats: { shot: true, goal: true },
+        shotOutcome: 'goal',
         ballPosition: { ...shooter.position },
         ballVelocity,
         restartType: 'kick_off',
@@ -486,6 +495,7 @@ export class RulesAgent {
             playerName: shooter.name,
             commentary: `${goalkeeper.name} gathers the shot.`,
             stats: { shot: true },
+            shotOutcome: 'on_target',
             ballPosition: { ...goalkeeper.position },
             ballVelocity: { x: 0, y: 0 },
             chanceQuality,
@@ -505,6 +515,7 @@ export class RulesAgent {
               playerName: shooter.name,
               commentary: `${goalkeeper.name} palms it wide for a corner.`,
               stats: { shot: true },
+              shotOutcome: 'on_target',
               ballPosition: { ...shooter.position },
               ballVelocity,
               restartType: 'corner',
@@ -522,6 +533,7 @@ export class RulesAgent {
               playerName: shooter.name,
               commentary: `${goalkeeper.name} parries into danger.`,
               stats: { shot: true },
+              shotOutcome: 'on_target',
               ballPosition: { ...goalkeeper.position },
               ballVelocity: deflection,
               chanceQuality
@@ -536,6 +548,7 @@ export class RulesAgent {
               playerName: shooter.name,
               commentary: `${goalkeeper.name} parries and ${defender.name} clears.`,
               stats: { shot: true },
+              shotOutcome: 'on_target',
               ballPosition: { ...defender.position },
               ballVelocity: this.buildLooseBallVelocity(defender.position, 4.5),
               chanceQuality,
@@ -556,6 +569,7 @@ export class RulesAgent {
         playerName: shooter.name,
         commentary: `${shooter.name} forces a save.`,
         stats: { shot: true },
+        shotOutcome: 'on_target',
         ballPosition: { ...shooter.position },
         ballVelocity,
         restartType: 'corner',
@@ -574,6 +588,7 @@ export class RulesAgent {
       playerName: shooter.name,
       commentary: `${shooter.name} shoots, but it is wide.`,
       stats: { shot: true },
+      shotOutcome: 'off_target',
       ballPosition: { ...shooter.position },
       ballVelocity: { x: 0, y: 0 },
       restartType: 'goal_kick',

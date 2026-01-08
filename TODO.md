@@ -84,3 +84,6 @@ This file outlines the implementation tasks required to deliver the first iterat
 - Added tactical shape logic with line heights, press triggers, and marking assignments.
 - Implemented structured set-piece routines plus advantage and card discipline flow.
 - Added match HUD overlays for morale, fatigue, injuries, and card tracking.
+- Added off-ball run intents, overlaps, and pass-to-space targeting based on roles and traits.
+- Expanded match statistics (pass accuracy, shots on/off target, xG, corners, offsides, tackles, interceptions, saves).
+- Added Set Piece Wizard settings in team setup to guide marking, delivery, and transitions.

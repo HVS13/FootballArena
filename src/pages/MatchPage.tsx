@@ -19,6 +19,8 @@ const formatClock = (timeSeconds: number) => {
 };
 
 const formatPercent = (value: number) => `${value.toFixed(1)}%`;
+const formatRatio = (value: number, total: number) =>
+  total > 0 ? `${((value / total) * 100).toFixed(1)}%` : '0.0%';
 
 const formatRestartLabel = (value: RestartInfo['type']) =>
   value
@@ -461,14 +463,49 @@ const MatchPage = () => {
               <span>{getStatValue(awayTeam.id, 'passes')}</span>
             </div>
             <div className="stats-row">
+              <span>Pass Accuracy</span>
+              <span>
+                {formatRatio(
+                  getStatValue(homeTeam.id, 'passes'),
+                  getStatValue(homeTeam.id, 'passesAttempted')
+                )}
+              </span>
+              <span>
+                {formatRatio(
+                  getStatValue(awayTeam.id, 'passes'),
+                  getStatValue(awayTeam.id, 'passesAttempted')
+                )}
+              </span>
+            </div>
+            <div className="stats-row">
               <span>Shots</span>
               <span>{getStatValue(homeTeam.id, 'shots')}</span>
               <span>{getStatValue(awayTeam.id, 'shots')}</span>
             </div>
             <div className="stats-row">
+              <span>Shots On Target</span>
+              <span>{getStatValue(homeTeam.id, 'shotsOnTarget')}</span>
+              <span>{getStatValue(awayTeam.id, 'shotsOnTarget')}</span>
+            </div>
+            <div className="stats-row">
+              <span>Shots Off Target</span>
+              <span>{getStatValue(homeTeam.id, 'shotsOffTarget')}</span>
+              <span>{getStatValue(awayTeam.id, 'shotsOffTarget')}</span>
+            </div>
+            <div className="stats-row">
+              <span>Shots Blocked</span>
+              <span>{getStatValue(homeTeam.id, 'shotsBlocked')}</span>
+              <span>{getStatValue(awayTeam.id, 'shotsBlocked')}</span>
+            </div>
+            <div className="stats-row">
               <span>Goals</span>
               <span>{getStatValue(homeTeam.id, 'goals')}</span>
               <span>{getStatValue(awayTeam.id, 'goals')}</span>
+            </div>
+            <div className="stats-row">
+              <span>xG</span>
+              <span>{getStatValue(homeTeam.id, 'xg').toFixed(2)}</span>
+              <span>{getStatValue(awayTeam.id, 'xg').toFixed(2)}</span>
             </div>
             <div className="stats-row">
               <span>Yellow Cards</span>
@@ -484,6 +521,31 @@ const MatchPage = () => {
               <span>Fouls</span>
               <span>{getStatValue(homeTeam.id, 'fouls')}</span>
               <span>{getStatValue(awayTeam.id, 'fouls')}</span>
+            </div>
+            <div className="stats-row">
+              <span>Corners</span>
+              <span>{getStatValue(homeTeam.id, 'corners')}</span>
+              <span>{getStatValue(awayTeam.id, 'corners')}</span>
+            </div>
+            <div className="stats-row">
+              <span>Offsides</span>
+              <span>{getStatValue(homeTeam.id, 'offsides')}</span>
+              <span>{getStatValue(awayTeam.id, 'offsides')}</span>
+            </div>
+            <div className="stats-row">
+              <span>Tackles Won</span>
+              <span>{getStatValue(homeTeam.id, 'tacklesWon')}</span>
+              <span>{getStatValue(awayTeam.id, 'tacklesWon')}</span>
+            </div>
+            <div className="stats-row">
+              <span>Interceptions</span>
+              <span>{getStatValue(homeTeam.id, 'interceptions')}</span>
+              <span>{getStatValue(awayTeam.id, 'interceptions')}</span>
+            </div>
+            <div className="stats-row">
+              <span>Saves</span>
+              <span>{getStatValue(homeTeam.id, 'saves')}</span>
+              <span>{getStatValue(awayTeam.id, 'saves')}</span>
             </div>
             <div className="stats-row">
               <span>Subs</span>

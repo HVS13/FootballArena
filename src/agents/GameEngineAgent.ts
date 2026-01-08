@@ -5,6 +5,7 @@ import { PlayerAttributes } from '../domain/types';
 import { TeamSetupState } from '../domain/teamSetupTypes';
 import { getRoleDutyBehavior, RoleBehavior } from '../data/roleBehavior';
 import { getMatchImportanceWeight } from '../data/matchImportance';
+import { DEFAULT_SET_PIECE_SETTINGS, SetPieceWizardSettings } from '../data/setPieceWizard';
 import { CommentaryAgent } from './CommentaryAgent';
 import { PhysicsAgent } from './PhysicsAgent';
 import { RuleDecision, RulesAgent } from './RulesAgent';
@@ -630,6 +631,7 @@ export class GameEngineAgent {
     }
 
     const possessionTeamId = this.possession?.teamId ?? null;
+    const possessorId = this.possession?.playerId ?? null;
     const ball = this.state.ball.position;
     const midY = this.pitch.height / 2;
     const teamShape = new Map<
@@ -752,6 +754,53 @@ export class GameEngineAgent {
           supportShift *= 1.2;
         }
         anchorX += direction * supportShift;
+
+        if (player.id !== possessorId) {
+          const anticipation = this.getAttribute(player, 'anticipation');
+          const acceleration = this.getAttribute(player, 'acceleration');
+          const decisions = this.getAttribute(player, 'decisions');
+          const runSkill = clamp((offTheBall + anticipation + acceleration + decisions) / 400, 0, 1);
+          let runBias = runSkill * 0.5 + behavior.advance * 0.45 + behavior.roam * 0.15;
+
+          if (this.hasTrait(player, 'comes_deep_to_get_ball')) runBias -= 0.25;
+          if (this.hasTrait(player, 'stays_back_at_all_times')) runBias -= 0.3;
+          if (this.hasTrait(player, 'gets_forward_whenever_possible')) runBias += 0.2;
+          if (this.hasTrait(player, 'gets_into_opposition_area')) runBias += 0.15;
+          if (this.hasTrait(player, 'tries_to_beat_offside_trap')) runBias += 0.18;
+
+          if (instructions?.attacking_transition === 'Counter-Attack') runBias += 0.08;
+          if (instructions?.attacking_transition === 'Patient Build-Up') runBias -= 0.08;
+          if (instructions?.tempo === 'Higher') runBias += 0.05;
+          if (instructions?.tempo === 'Lower') runBias -= 0.05;
+          if (instructions?.pass_reception === 'Overlapped' && behavior.width > 0.3) {
+            runBias += 0.08;
+          }
+
+          runBias = clamp(runBias, -0.35, 0.9);
+
+          const spacing = clamp(ballAxis - playerAxis, -10, 16);
+          let forwardRun = runBias >= 0 ? 2 + runBias * 6 : runBias * 4;
+          if (spacing > 10) forwardRun *= 0.7;
+          if (spacing < -4) forwardRun *= 0.4;
+
+          anchorX += direction * forwardRun;
+
+          let lateralShift = 0;
+          if (this.hasTrait(player, 'moves_into_channels')) {
+            const offset = anchorY - midY;
+            if (Math.abs(offset) > 12) {
+              lateralShift -= Math.sign(offset) * 3;
+            } else {
+              lateralShift += Math.sign(offset || 1) * 3;
+            }
+          }
+          if (instructions?.pass_reception === 'Overlapped' && behavior.width > 0.3) {
+            lateralShift += Math.sign(anchorY - midY || 1) * 2.5;
+            anchorX += direction * 1.2;
+          }
+
+          anchorY += lateralShift;
+        }
       } else if (possessionTeamId) {
         const pressBias = this.getPressBias(instructions);
         const pressTrigger = shape?.pressTrigger ?? 1;
@@ -1227,6 +1276,7 @@ export class GameEngineAgent {
       this.state.ball.velocity = { x: 0, y: 0 };
       this.possession = { teamId: defender.teamId, playerId: defender.id };
       this.actionCooldown = 0.35;
+      this.statsAgent.recordTackle(defender.teamId);
 
       this.adjustPlayerMorale(defender.id, 1.2);
       this.adjustPlayerMorale(possessor.id, -1.6);
@@ -1328,7 +1378,15 @@ export class GameEngineAgent {
     }
 
     if (passTarget) {
-      const decision = this.rules.decidePass(this.state, this.possession.teamId, possessor, passTarget, instructions);
+      const leadPosition = this.getPassLeadPosition(possessor, passTarget, instructions);
+      const decision = this.rules.decidePass(
+        this.state,
+        this.possession.teamId,
+        possessor,
+        passTarget,
+        instructions,
+        leadPosition ? { passLeadPosition: leadPosition } : undefined
+      );
       this.applyRuleDecision(decision);
       this.actionCooldown = this.getActionCooldown(possessor, instructions, decision.type, pressure);
       return;
@@ -1457,6 +1515,8 @@ export class GameEngineAgent {
     if (this.hasTrait(player, 'tries_first_time_shots') && distance <= 18) desire += 0.05;
     if (this.hasTrait(player, 'looks_for_pass_rather_than_attempting_to_score')) desire -= 0.1;
     if (this.hasTrait(player, 'penalty_box_player') && distance <= 12) desire += 0.06;
+    if (this.hasTrait(player, 'plays_with_back_to_goal')) desire -= 0.08;
+    if (this.hasTrait(player, 'stops_play')) desire -= 0.06;
 
     desire += roleBehavior.shoot * 0.18;
     desire += roleBehavior.risk * 0.08;
@@ -1520,6 +1580,15 @@ export class GameEngineAgent {
         let forwardScore = clamp(forward / (desiredDistance * 1.3), -0.4, 1);
         const openness = this.getOpponentDistance(receiver.position, teamId);
         const opennessScore = clamp(openness / 10, 0, 1);
+        const runTarget = receiver.tacticalPosition ?? receiver.targetPosition ?? receiver.position;
+        const runAhead =
+          this.getAttackAxis(runTarget.x, direction) - this.getAttackAxis(receiver.position.x, direction);
+        let runBonus = clamp(runAhead / 12, 0, 0.25);
+        if (this.hasTrait(receiver, 'tries_to_beat_offside_trap')) runBonus *= 1.2;
+        if (this.hasTrait(receiver, 'moves_into_channels')) runBonus *= 1.1;
+        if (this.hasTrait(passer, 'tries_killer_balls_often')) runBonus *= 1.2;
+        if (this.hasPlaystyle(passer, 'incisive_pass')) runBonus *= 1.15;
+        if (this.hasTrait(passer, 'plays_no_through_balls')) runBonus *= 0.6;
 
         let sideBonus = 0;
         if (progressThrough === 'Left' && receiver.position.y < this.pitch.height / 2) sideBonus = 0.12;
@@ -1563,7 +1632,8 @@ export class GameEngineAgent {
         forwardScore *= 1 + clamp(riskBias * 0.35 * fatigueRiskScale, -0.2, 0.25);
         distanceScore *= 1 + clamp(roleBehavior.pass * 0.2, -0.12, 0.12);
 
-        let score = 0.45 * distanceScore + 0.25 * opennessScore + 0.2 * forwardScore + sideBonus;
+        let score =
+          0.42 * distanceScore + 0.24 * opennessScore + 0.2 * forwardScore + sideBonus + runBonus;
         score *= clamp(rangeFactor, 0.6, 1.3);
 
         if (this.rules.isOffsidePosition(this.state, teamId, receiver)) {
@@ -1589,6 +1659,36 @@ export class GameEngineAgent {
       if (roll <= 0) return entry.receiver;
     }
     return top[0].receiver;
+  }
+
+  private getPassLeadPosition(
+    passer: typeof this.state.players[number],
+    receiver: typeof this.state.players[number],
+    instructions: Record<string, string> | undefined
+  ) {
+    const direction = this.getAttackDirection(passer.teamId);
+    const target = receiver.tacticalPosition ?? receiver.targetPosition ?? receiver.position;
+    const receiverAxis = this.getAttackAxis(receiver.position.x, direction);
+    const targetAxis = this.getAttackAxis(target.x, direction);
+    const runAhead = targetAxis - receiverAxis;
+    if (runAhead < 2) return null;
+
+    const vision = this.getAttribute(passer, 'vision');
+    const decisions = this.getAttribute(passer, 'decisions');
+    const technique = this.getAttribute(passer, 'technique');
+    const throughSkill = (vision + decisions + technique) / 300;
+    let chance = 0.25 + throughSkill * 0.5;
+    if (this.hasTrait(passer, 'tries_killer_balls_often')) chance += 0.18;
+    if (this.hasPlaystyle(passer, 'incisive_pass')) chance += 0.12;
+    if (this.hasTrait(passer, 'plays_no_through_balls')) chance -= 0.25;
+    if (instructions?.passing_directness === 'Much Shorter') chance -= 0.1;
+    if (instructions?.passing_directness === 'Much More Direct') chance += 0.06;
+
+    if (Math.random() > clamp(chance, 0.05, 0.75)) return null;
+    return {
+      x: clamp(target.x, 0.5, this.pitch.width - 0.5),
+      y: clamp(target.y, 0.5, this.pitch.height - 0.5)
+    };
   }
 
   private getDesiredPassDistance(
@@ -1618,6 +1718,8 @@ export class GameEngineAgent {
     if (this.hasTrait(passer, 'plays_short_simple_passes')) desired -= 4;
     if (this.hasTrait(passer, 'tries_long_range_passes')) desired += 6;
     if (this.hasTrait(passer, 'tries_killer_balls_often')) desired += 4;
+    if (this.hasTrait(passer, 'plays_with_back_to_goal')) desired -= 3;
+    if (this.hasTrait(passer, 'stops_play')) desired -= 2;
 
     desired += (roleBehavior.risk + creativeBias) * 6;
     desired += roleBehavior.pass * 4;
@@ -1677,6 +1779,14 @@ export class GameEngineAgent {
 
   private getTeamInstructions(teamId: string) {
     return this.teamSetup?.teams.find((team) => team.id === teamId)?.instructions;
+  }
+
+  private getSetPieceSettings(teamId: string): SetPieceWizardSettings {
+    return (
+      this.teamSetup?.teams.find((team) => team.id === teamId)?.setPieces ?? {
+        ...DEFAULT_SET_PIECE_SETTINGS
+      }
+    );
   }
 
   private getOpponentTeamId(teamId: string) {
@@ -1954,17 +2064,36 @@ export class GameEngineAgent {
   }
 
   private applyRuleDecision(decision: RuleDecision) {
+    if (decision.type === 'pass' || decision.type === 'out' || decision.type === 'offside') {
+      this.statsAgent.recordPassAttempt(decision.teamId);
+    }
     if (decision.stats.pass) {
       this.statsAgent.recordPass(decision.teamId);
     }
     if (decision.stats.shot) {
       this.statsAgent.recordShot(decision.teamId);
+      this.recordShotDetail(decision);
     }
     if (decision.stats.goal) {
       this.statsAgent.recordGoal(decision.teamId);
     }
     if (decision.stats.foul) {
       this.statsAgent.recordFoul(decision.teamId);
+    }
+    if (decision.type === 'offside') {
+      this.statsAgent.recordOffside(decision.teamId);
+    }
+    if (decision.restartType === 'corner' && decision.restartTeamId) {
+      this.statsAgent.recordCorner(decision.restartTeamId);
+    }
+    if (decision.turnoverReason === 'interception' && decision.turnoverTeamId) {
+      this.statsAgent.recordInterception(decision.turnoverTeamId);
+    }
+    if (decision.shotOutcome === 'on_target' && decision.turnoverPlayerId && decision.turnoverTeamId) {
+      const saver = this.state.players.find((player) => player.id === decision.turnoverPlayerId);
+      if (saver && this.isGoalkeeperRole(saver)) {
+        this.statsAgent.recordSave(decision.turnoverTeamId);
+      }
     }
     if (decision.card) {
       this.applyDiscipline(decision.teamId, decision.playerId, decision.card);
@@ -2052,6 +2181,33 @@ export class GameEngineAgent {
         this.actionCooldown = Math.max(this.actionCooldown, 0.4);
       }
     }
+  }
+
+  private recordShotDetail(decision: RuleDecision) {
+    if (!decision.shotOutcome) return;
+    if (decision.shotOutcome === 'goal' || decision.shotOutcome === 'on_target') {
+      this.statsAgent.recordShotOnTarget(decision.teamId);
+    } else if (decision.shotOutcome === 'off_target') {
+      this.statsAgent.recordShotOffTarget(decision.teamId);
+    } else if (decision.shotOutcome === 'blocked') {
+      this.statsAgent.recordShotBlocked(decision.teamId);
+    }
+
+    const xg = this.estimateXg(decision.playerId, decision.teamId, decision.chanceQuality);
+    if (xg > 0) {
+      this.statsAgent.recordXg(decision.teamId, xg);
+    }
+  }
+
+  private estimateXg(playerId: string, teamId: string, chanceQuality?: 'big' | 'normal') {
+    const shooter = this.state.players.find((player) => player.id === playerId);
+    if (!shooter) return 0;
+    const goal = this.getGoalPosition(teamId);
+    const distance = Math.hypot(goal.x - shooter.position.x, goal.y - shooter.position.y);
+    const base = chanceQuality === 'big' ? 0.28 : 0.08;
+    const distanceFactor = clamp(1 - distance / 36, 0.15, 1);
+    const boxBoost = distance <= 12 ? 0.08 : 0;
+    return clamp(base + distanceFactor * 0.18 + boxBoost, 0.02, 0.65);
   }
 
   private resetAfterGoal() {
@@ -2182,19 +2338,14 @@ export class GameEngineAgent {
     if (restart.takerId) positions.set(restart.takerId, restart.position);
     const attackingTeamId = restart.teamId;
     const defendingTeamId = this.getOpponentTeamId(attackingTeamId);
+    const settings = this.getSetPieceSettings(attackingTeamId);
+    const defendingSettings = this.getSetPieceSettings(defendingTeamId);
     const goal = this.getGoalPosition(attackingTeamId);
     const midY = this.pitch.height / 2;
     const cornerSide = restart.position.y < midY ? -1 : 1;
-    const boxX = goal.x === 0 ? 6 : this.pitch.width - 6;
-    const penaltyX = goal.x === 0 ? 11 : this.pitch.width - 11;
-    const edgeX = goal.x === 0 ? 18 : this.pitch.width - 18;
-
-    const attackTargets = [
-      { x: boxX, y: midY + cornerSide * 5 },
-      { x: boxX, y: midY - cornerSide * 3 },
-      { x: penaltyX, y: midY },
-      { x: edgeX, y: midY + cornerSide * 8 }
-    ];
+    const attackCount =
+      settings.numbersCommitted === 'stay_high' ? 6 : settings.numbersCommitted === 'defend_transition' ? 3 : 5;
+    const attackTargets = this.getCornerTargetPositions(goal.x, midY, cornerSide, settings, attackCount);
 
     const attackers = this.getActiveTeamPlayers(attackingTeamId).filter(
       (player) => player.id !== restart.takerId && !this.isGoalkeeperRole(player)
@@ -2213,16 +2364,31 @@ export class GameEngineAgent {
     const defenders = this.getActiveTeamPlayers(defendingTeamId).filter(
       (player) => !this.isGoalkeeperRole(player)
     );
-    attackTargets.forEach((pos) => {
-      const marker = this.pickClosestPlayerToPosition(defenders, pos, positions);
-      if (marker) {
-        const offset = goal.x === 0 ? -1.2 : 1.2;
-        positions.set(marker.id, {
-          x: clamp(pos.x + offset, 1, this.pitch.width - 1),
-          y: clamp(pos.y, 1, this.pitch.height - 1)
-        });
-      }
-    });
+    this.assignPostCoverage(defenders, positions, goal.x, midY, cornerSide, defendingSettings);
+    this.assignZonalMarkers(defenders, positions, goal.x, midY, cornerSide, defendingSettings);
+
+    if (defendingSettings.markingSystem !== 'zonal') {
+      attackTargets.forEach((pos) => {
+        const marker = this.pickClosestPlayerToPosition(defenders, pos, positions);
+        if (marker) {
+          const offset = goal.x === 0 ? -1.2 : 1.2;
+          positions.set(marker.id, {
+            x: clamp(pos.x + offset, 1, this.pitch.width - 1),
+            y: clamp(pos.y, 1, this.pitch.height - 1)
+          });
+        }
+      });
+    }
+
+    const outletCount =
+      defendingSettings.defensivePosture === 'counter_attack'
+        ? 2
+        : defendingSettings.defensivePosture === 'balanced'
+          ? 1
+          : 0;
+    if (outletCount > 0) {
+      this.assignCounterOutlets(defendingTeamId, defenders, positions, outletCount);
+    }
 
     this.applyRestartPositions(positions, restart.remaining + 0.6, 0.6);
   }
@@ -2312,7 +2478,9 @@ export class GameEngineAgent {
     }
 
     const instructions = this.getTeamInstructions(restart.teamId);
-    const target = this.pickBestAerialTarget(restart.teamId, new Set([taker.id]));
+    const settings = this.getSetPieceSettings(restart.teamId);
+    const deliverySpot = this.getCornerDeliverySpot(restart.position, restart.teamId, settings);
+    const target = this.pickSetPieceTargetBySpot(restart.teamId, deliverySpot, new Set([taker.id]));
     this.possession = { teamId: restart.teamId, playerId: taker.id };
 
     if (!target) {
@@ -2326,7 +2494,7 @@ export class GameEngineAgent {
       taker,
       target,
       instructions,
-      { ignoreOffside: true, forceAerial: true, setPiece: 'corner' }
+      { ignoreOffside: true, forceAerial: true, setPiece: 'corner', passLeadPosition: deliverySpot }
     );
     decision.commentary = `${taker.name} swings in the corner.`;
     this.applyRuleDecision(decision);
@@ -2340,6 +2508,7 @@ export class GameEngineAgent {
     }
 
     const instructions = this.getTeamInstructions(restart.teamId);
+    const settings = this.getSetPieceSettings(restart.teamId);
     const goal = this.getGoalPosition(restart.teamId);
     const distance = Math.hypot(goal.x - restart.position.x, goal.y - restart.position.y);
     const wideAngle = Math.abs(restart.position.y - this.pitch.height / 2) > 18;
@@ -2364,7 +2533,8 @@ export class GameEngineAgent {
       return;
     }
 
-    const target = this.pickBestAerialTarget(restart.teamId, new Set([taker.id]));
+    const deliverySpot = this.getFreeKickDeliverySpot(restart.position, restart.teamId, settings);
+    const target = this.pickSetPieceTargetBySpot(restart.teamId, deliverySpot, new Set([taker.id]));
     if (!target) {
       this.commentaryAgent.addLine(this.state.time, 'Play resumes.');
       return;
@@ -2376,7 +2546,7 @@ export class GameEngineAgent {
       taker,
       target,
       instructions,
-      { ignoreOffside: true, forceAerial: true, setPiece: 'free_kick' }
+      { ignoreOffside: true, forceAerial: true, setPiece: 'free_kick', passLeadPosition: deliverySpot }
     );
     decision.commentary = `${taker.name} delivers the free kick.`;
     this.applyRuleDecision(decision);
@@ -2390,7 +2560,8 @@ export class GameEngineAgent {
     }
 
     const instructions = this.getTeamInstructions(restart.teamId);
-    const target = this.pickThrowInTarget(restart.teamId, taker);
+    const settings = this.getSetPieceSettings(restart.teamId);
+    const target = this.pickThrowInTarget(restart.teamId, taker, settings);
     this.possession = { teamId: restart.teamId, playerId: taker.id };
 
     if (!target) {
@@ -2660,7 +2831,11 @@ export class GameEngineAgent {
     }, null as null | { player: typeof this.state.players[number]; score: number })?.player ?? null;
   }
 
-  private pickThrowInTarget(teamId: string, taker: typeof this.state.players[number]) {
+  private pickThrowInTarget(
+    teamId: string,
+    taker: typeof this.state.players[number],
+    settings: SetPieceWizardSettings
+  ) {
     const candidates = this.getActiveTeamPlayers(teamId).filter(
       (player) => player.id !== taker.id && !this.isGoalkeeperRole(player)
     );
@@ -2675,7 +2850,9 @@ export class GameEngineAgent {
       this.hasTrait(taker, 'uses_long_throw_to_start_counter_attacks') ||
       this.hasPlaystyle(taker, 'long_throw');
 
-    if (hasLongThrow && ballAxis > this.pitch.width * 0.45) {
+    const prefersLong =
+      settings.numbersCommitted === 'stay_high' || settings.defensivePosture === 'counter_attack';
+    if (hasLongThrow && ballAxis > this.pitch.width * 0.45 && prefersLong) {
       return this.pickBestAerialTarget(teamId, new Set([taker.id])) ?? candidates[0];
     }
 
@@ -2689,6 +2866,75 @@ export class GameEngineAgent {
       }
     });
     return closest;
+  }
+
+  private pickSetPieceTargetBySpot(
+    teamId: string,
+    spot: Vector2,
+    excludeIds: Set<string>
+  ) {
+    const candidates = this.getActiveTeamPlayers(teamId).filter(
+      (player) => !excludeIds.has(player.id) && !this.isGoalkeeperRole(player)
+    );
+    if (!candidates.length) return null;
+
+    return candidates.reduce((best, player) => {
+      const aerial = this.getAerialScore(player);
+      const distance = Math.hypot(player.position.x - spot.x, player.position.y - spot.y);
+      const score = aerial - distance * 0.6;
+      if (!best || score > best.score) {
+        return { player, score };
+      }
+      return best;
+    }, null as null | { player: typeof this.state.players[number]; score: number })?.player ?? null;
+  }
+
+  private getCornerDeliverySpot(
+    cornerPosition: Vector2,
+    teamId: string,
+    settings: SetPieceWizardSettings
+  ) {
+    const goal = this.getGoalPosition(teamId);
+    const midY = this.pitch.height / 2;
+    const cornerSide = cornerPosition.y < midY ? -1 : 1;
+    const baseX = goal.x === 0 ? 6 : this.pitch.width - 6;
+    const nearY = midY + cornerSide * 4.5;
+    const farY = midY - cornerSide * 4.5;
+    const centreY = midY;
+    const targetY =
+      settings.deliveryTarget === 'near_post'
+        ? nearY
+        : settings.deliveryTarget === 'far_post'
+          ? farY
+          : centreY;
+    const swingOffset = settings.deliverySwing === 'outswinger' ? (goal.x === 0 ? 1.2 : -1.2) : 0.4;
+    return {
+      x: clamp(baseX + swingOffset, 1, this.pitch.width - 1),
+      y: clamp(targetY, 1, this.pitch.height - 1)
+    };
+  }
+
+  private getFreeKickDeliverySpot(
+    freeKickPosition: Vector2,
+    teamId: string,
+    settings: SetPieceWizardSettings
+  ) {
+    const goal = this.getGoalPosition(teamId);
+    const midY = this.pitch.height / 2;
+    const baseX = goal.x === 0 ? 8 : this.pitch.width - 8;
+    const nearY = freeKickPosition.y < midY ? midY - 4 : midY + 4;
+    const farY = freeKickPosition.y < midY ? midY + 4 : midY - 4;
+    const targetY =
+      settings.deliveryTarget === 'near_post'
+        ? nearY
+        : settings.deliveryTarget === 'far_post'
+          ? farY
+          : midY;
+    const swingOffset = settings.deliverySwing === 'outswinger' ? (goal.x === 0 ? 1.4 : -1.4) : 0.4;
+    return {
+      x: clamp(baseX + swingOffset, 1, this.pitch.width - 1),
+      y: clamp(targetY, 1, this.pitch.height - 1)
+    };
   }
 
   private buildWallPositions(ball: Vector2, goal: Vector2, count: number) {
@@ -2711,6 +2957,116 @@ export class GameEngineAgent {
         x: clamp(center.x + perpX * offset, 1, this.pitch.width - 1),
         y: clamp(center.y + perpY * offset, 1, this.pitch.height - 1)
       };
+    });
+  }
+
+  private getCornerTargetPositions(
+    goalX: number,
+    midY: number,
+    cornerSide: number,
+    settings: SetPieceWizardSettings,
+    count: number
+  ) {
+    const baseX = goalX === 0 ? 6 : this.pitch.width - 6;
+    const farX = goalX === 0 ? 9 : this.pitch.width - 9;
+    const edgeX = goalX === 0 ? 18 : this.pitch.width - 18;
+    const nearY = midY + cornerSide * 4.5;
+    const farY = midY - cornerSide * 4.5;
+    const centreY = midY;
+    const swingOffset = settings.deliverySwing === 'outswinger' ? (goalX === 0 ? 1.2 : -1.2) : 0.4;
+
+    const targets = [
+      { x: baseX + swingOffset, y: nearY },
+      { x: baseX + swingOffset, y: centreY },
+      { x: farX + swingOffset, y: farY },
+      { x: edgeX, y: midY + cornerSide * 8 },
+      { x: edgeX, y: midY - cornerSide * 6 }
+    ];
+
+    const order =
+      settings.deliveryTarget === 'near_post'
+        ? [0, 1, 2, 3, 4]
+        : settings.deliveryTarget === 'far_post'
+          ? [2, 1, 0, 3, 4]
+          : [1, 0, 2, 3, 4];
+
+    const ordered = order.map((index) => targets[index]).slice(0, count);
+    return ordered.map((pos) => ({
+      x: clamp(pos.x, 1, this.pitch.width - 1),
+      y: clamp(pos.y, 1, this.pitch.height - 1)
+    }));
+  }
+
+  private getCornerZonePositions(goalX: number, midY: number, cornerSide: number) {
+    const zoneX = goalX === 0 ? 4.5 : this.pitch.width - 4.5;
+    return [
+      { x: zoneX, y: midY + cornerSide * 3 },
+      { x: zoneX, y: midY },
+      { x: zoneX, y: midY - cornerSide * 3 }
+    ];
+  }
+
+  private assignPostCoverage(
+    defenders: Array<typeof this.state.players[number]>,
+    positions: Map<string, Vector2>,
+    goalX: number,
+    midY: number,
+    cornerSide: number,
+    settings: SetPieceWizardSettings
+  ) {
+    if (settings.postCoverage === 'no_posts') return;
+    const postX = goalX === 0 ? 0.8 : this.pitch.width - 0.8;
+    const nearPost = { x: postX, y: clamp(midY + cornerSide * 3, 1, this.pitch.height - 1) };
+    const farPost = { x: postX, y: clamp(midY - cornerSide * 3, 1, this.pitch.height - 1) };
+    const targets = settings.postCoverage === 'both_posts' ? [nearPost, farPost] : [nearPost];
+
+    targets.forEach((pos) => {
+      const marker = this.pickClosestPlayerToPosition(defenders, pos, positions);
+      if (marker) {
+        positions.set(marker.id, pos);
+      }
+    });
+  }
+
+  private assignZonalMarkers(
+    defenders: Array<typeof this.state.players[number]>,
+    positions: Map<string, Vector2>,
+    goalX: number,
+    midY: number,
+    cornerSide: number,
+    settings: SetPieceWizardSettings
+  ) {
+    if (settings.markingSystem === 'player') return;
+    const zones = this.getCornerZonePositions(goalX, midY, cornerSide);
+    const zoneCount = settings.markingSystem === 'hybrid' ? 2 : zones.length;
+    zones.slice(0, zoneCount).forEach((pos) => {
+      const marker = this.pickClosestPlayerToPosition(defenders, pos, positions);
+      if (marker) {
+        positions.set(marker.id, pos);
+      }
+    });
+  }
+
+  private assignCounterOutlets(
+    teamId: string,
+    defenders: Array<typeof this.state.players[number]>,
+    positions: Map<string, Vector2>,
+    count: number
+  ) {
+    const available = defenders.filter((player) => !positions.has(player.id));
+    if (!available.length) return;
+    const sorted = available
+      .slice()
+      .sort((a, b) => this.getAttribute(b, 'pace') - this.getAttribute(a, 'pace'));
+    const direction = this.getAttackDirection(teamId);
+    const midX = this.pitch.width / 2 - direction * 8;
+    const midY = this.pitch.height / 2;
+
+    sorted.slice(0, count).forEach((player, index) => {
+      positions.set(player.id, {
+        x: clamp(midX, 1, this.pitch.width - 1),
+        y: clamp(midY + (index === 0 ? -8 : 8), 1, this.pitch.height - 1)
+      });
     });
   }
 

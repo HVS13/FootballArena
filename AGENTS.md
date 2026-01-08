@@ -46,6 +46,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
 * **Responsibilities:**
  - Expose drag-and-drop UI components for formation selection and player positioning.
  - Present lists of available team instructions, roles, and duties (loaded by DataImportAgent) with concise descriptions.
+ - Provide the set-piece wizard so users can define marking, delivery, and transition preferences.
  - Capture user choices and produce a tactical plan that the GameEngineAgent can simulate.
  - Collect match environment settings (weather, wind, pitch condition) including presets and randomisation options.
 * **Interactions:** Interacts with UIAgent for front-end elements, obtains lists from DataImportAgent, and passes final tactical configurations to GameEngineAgent.
@@ -67,8 +68,8 @@ This project organizes the simulation game into distinct "agents." Each agent en
 
 * **Purpose:** Tracks and aggregates match statistics.
 * **Responsibilities:**
- - Record events such as shots, passes, tackles, interceptions, fouls, yellow/red cards, and goals.
- - Generate per-player and team statistics (possession percentages, pass accuracy, shot accuracy, xG, etc.).
+ - Record events such as shots, passes, tackles, interceptions, fouls, yellow/red cards, offsides, corners, and goals.
+ - Generate per-player and team statistics (possession percentages, pass accuracy, shot accuracy, xG, saves, etc.).
  - Provide real-time updates to the UIAgent for display beneath the 2D pitch view.
 * **Interactions:** Receives updates from GameEngineAgent and PhysicsAgent; sends aggregated metrics to UIAgent.
 

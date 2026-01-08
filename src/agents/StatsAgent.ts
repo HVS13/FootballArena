@@ -3,12 +3,22 @@ import { SimulationState } from '../domain/simulationTypes';
 
 const createTeamStats = (): TeamMatchStats => ({
   possessionSeconds: 0,
+  passesAttempted: 0,
   passes: 0,
   shots: 0,
+  shotsOnTarget: 0,
+  shotsOffTarget: 0,
+  shotsBlocked: 0,
   goals: 0,
   fouls: 0,
   yellowCards: 0,
   redCards: 0,
+  offsides: 0,
+  corners: 0,
+  tacklesWon: 0,
+  interceptions: 0,
+  saves: 0,
+  xg: 0,
   substitutions: 0
 });
 
@@ -42,8 +52,24 @@ export class StatsAgent {
     this.stats.byTeam[teamId].passes += 1;
   }
 
+  recordPassAttempt(teamId: string) {
+    this.stats.byTeam[teamId].passesAttempted += 1;
+  }
+
   recordShot(teamId: string) {
     this.stats.byTeam[teamId].shots += 1;
+  }
+
+  recordShotOnTarget(teamId: string) {
+    this.stats.byTeam[teamId].shotsOnTarget += 1;
+  }
+
+  recordShotOffTarget(teamId: string) {
+    this.stats.byTeam[teamId].shotsOffTarget += 1;
+  }
+
+  recordShotBlocked(teamId: string) {
+    this.stats.byTeam[teamId].shotsBlocked += 1;
   }
 
   recordGoal(teamId: string) {
@@ -60,6 +86,30 @@ export class StatsAgent {
 
   recordRed(teamId: string) {
     this.stats.byTeam[teamId].redCards += 1;
+  }
+
+  recordOffside(teamId: string) {
+    this.stats.byTeam[teamId].offsides += 1;
+  }
+
+  recordCorner(teamId: string) {
+    this.stats.byTeam[teamId].corners += 1;
+  }
+
+  recordTackle(teamId: string) {
+    this.stats.byTeam[teamId].tacklesWon += 1;
+  }
+
+  recordInterception(teamId: string) {
+    this.stats.byTeam[teamId].interceptions += 1;
+  }
+
+  recordSave(teamId: string) {
+    this.stats.byTeam[teamId].saves += 1;
+  }
+
+  recordXg(teamId: string, value: number) {
+    this.stats.byTeam[teamId].xg += value;
   }
 
   recordSubstitution(teamId: string) {

@@ -14,10 +14,13 @@ Key features include:
 * **Substitutions and rule enforcement:** The game enforces official FIFA rules and allows in-game substitutions with the correct limits.
 * **Contested possession:** The simulation resolves tackles, interceptions, miscontrols, aerial duels, goalkeeper saves, pass/shot variance, and loose-ball rebounds so turnovers feel more realistic.
 * **Set-piece routines and discipline:** Corners, free kicks, throw-ins, penalties, and kick-offs are structured; fouls can play advantage and trigger yellow/red cards.
+* **Off-ball movement:** Players make forward runs, overlaps, and channel movements driven by roles, traits, and instructions.
 * **Match environment effects:** Weather, wind, temperature, and pitch conditions influence ball physics and player fatigue.
 * **Player traits:** FM player preferred moves modify decisions like carrying, passing, and shooting.
 * **Match importance, morale, and fatigue:** Match importance scales pressure and morale swings; morale and fatigue evolve over time, impacting decisions and movement, with injuries introducing temporary limitations.
 * **Match HUD overlays:** On-pitch overlays summarize fatigue, morale, injuries, and discipline per team.
+* **Expanded match stats:** Pass accuracy, shots on/off target, xG, corners, offsides, tackles, interceptions, and saves.
+* **Set-piece wizard:** A six-question setup to shape marking, delivery targets, and numbers committed.
 
 ## v0.1 Scope and Acceptance Criteria
 
@@ -30,12 +33,15 @@ Key features include:
 - Match environment configuration available in setup (weather, wind, temperature, pitch condition, presets, randomize).
 - Match importance, morale shifts, fatigue accumulation, and basic injury knocks impacting performance.
 - Structured set pieces (corners, free kicks, throw-ins, penalties, kick-offs) with advantage/card discipline.
+- Off-ball movement and pass-to-space behavior influenced by roles, traits, and instructions.
 - 2D top-down pitch with players as circles + foot indicator, officials visible.
 - Real-time simulation with fixed-tick engine, rendering at 60fps.
 - Speed controls x2/x4/x8/x16 and pause/resume.
 - Substitutions with official limits (5 subs in 3 windows + halftime).
 - Live commentary feed and live match stats panel.
 - Match HUD overlays for fatigue, morale, injuries, and cards.
+- Expanded stats (pass accuracy, shots on/off target, xG, corners, offsides, tackles, interceptions, saves).
+- Set-piece wizard for selecting marking, delivery, and transition preferences.
 
 **Out of scope (v0.1):**
 - Online multiplayer and matchmaking.

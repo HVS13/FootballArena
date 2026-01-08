@@ -1,5 +1,6 @@
 ﻿import { Vector2 } from './simulationTypes';
 import { PlayerImport } from './types';
+import { SetPieceWizardSettings } from '../data/setPieceWizard';
 
 export type LineupSlot = {
   id: string;
@@ -18,6 +19,7 @@ export type TeamSetup = {
   slots: LineupSlot[];
   bench: string[];
   instructions: Record<string, string>;
+  setPieces: SetPieceWizardSettings;
 };
 
 export type TeamSetupState = {

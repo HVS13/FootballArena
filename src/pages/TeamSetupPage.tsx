@@ -6,6 +6,7 @@ import { ENVIRONMENT_PRESETS } from '../data/environmentPresets';
 import { MATCH_IMPORTANCE_LEVELS } from '../data/matchImportance';
 import { referenceData } from '../data/referenceData';
 import { FORMATIONS, buildLineupSlots } from '../data/formations';
+import { DEFAULT_SET_PIECE_SETTINGS, SET_PIECE_WIZARD_QUESTIONS } from '../data/setPieceWizard';
 import { DEFAULT_ENVIRONMENT, EnvironmentState } from '../domain/environmentTypes';
 import { ImportError, TeamImport } from '../domain/types';
 import { TeamSetup, TeamSetupState } from '../domain/teamSetupTypes';
@@ -104,7 +105,8 @@ const buildTeamSetup = (
     roster,
     slots,
     bench,
-    instructions: buildInstructionDefaults()
+    instructions: buildInstructionDefaults(),
+    setPieces: { ...DEFAULT_SET_PIECE_SETTINGS }
   };
 };
 
@@ -218,6 +220,20 @@ const TeamSetupPage = () => {
     updateTeam(selectedTeam.id, (team) => ({
       ...team,
       instructions: { ...team.instructions, [instructionId]: value }
+    }));
+  };
+
+  const updateSetPieceSetting = (key: string, value: string) => {
+    updateTeam(selectedTeam.id, (team) => ({
+      ...team,
+      setPieces: { ...team.setPieces, [key]: value }
+    }));
+  };
+
+  const resetSetPieceWizard = () => {
+    updateTeam(selectedTeam.id, (team) => ({
+      ...team,
+      setPieces: { ...DEFAULT_SET_PIECE_SETTINGS }
     }));
   };
 
@@ -594,6 +610,40 @@ const TeamSetupPage = () => {
                   </option>
                 ))}
               </select>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="controls-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0 }}>Set Piece Wizard</h3>
+          <button className="button secondary" onClick={resetSetPieceWizard}>
+            Reset Wizard
+          </button>
+        </div>
+        <p style={{ marginTop: '8px' }}>
+          Answer the six questions to shape your corner, free kick, and throw-in routines. You can tweak these
+          later.
+        </p>
+        <div className="field-group">
+          {SET_PIECE_WIZARD_QUESTIONS.map((question) => (
+            <div key={question.id}>
+              <div>{question.name}</div>
+              <select
+                className="select"
+                value={(selectedTeam.setPieces as Record<string, string>)[question.id]}
+                onChange={(event) => updateSetPieceSetting(question.id, event.target.value)}
+              >
+                {question.options.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+              <div style={{ marginTop: '6px', fontSize: '13px', color: '#6b7280' }}>
+                {question.description}
+              </div>
             </div>
           ))}
         </div>
