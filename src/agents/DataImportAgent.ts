@@ -55,8 +55,7 @@ const parseCsv = (text: string) => {
       continue;
     }
 
-    if (char === '
-') {
+    if (char === '\\n') {
       row.push(field.trim());
       if (row.some((value) => value.length)) {
         rows.push(row);
@@ -66,7 +65,7 @@ const parseCsv = (text: string) => {
       continue;
     }
 
-    if (char === '') {
+    if (char === '\\r') {
       continue;
     }
 
