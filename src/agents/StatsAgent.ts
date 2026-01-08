@@ -7,6 +7,8 @@ const createTeamStats = (): TeamMatchStats => ({
   shots: 0,
   goals: 0,
   fouls: 0,
+  yellowCards: 0,
+  redCards: 0,
   substitutions: 0
 });
 
@@ -52,6 +54,14 @@ export class StatsAgent {
     this.stats.byTeam[teamId].fouls += 1;
   }
 
+  recordYellow(teamId: string) {
+    this.stats.byTeam[teamId].yellowCards += 1;
+  }
+
+  recordRed(teamId: string) {
+    this.stats.byTeam[teamId].redCards += 1;
+  }
+
   recordSubstitution(teamId: string) {
     this.stats.byTeam[teamId].substitutions += 1;
   }
@@ -65,6 +75,7 @@ export class StatsAgent {
     let closestDistance = Number.POSITIVE_INFINITY;
 
     for (const player of state.players) {
+      if (player.discipline?.red) continue;
       const dx = player.position.x - state.ball.position.x;
       const dy = player.position.y - state.ball.position.y;
       const dist = Math.hypot(dx, dy);

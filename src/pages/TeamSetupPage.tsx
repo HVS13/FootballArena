@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { DataImportAgent } from '../agents/DataImportAgent';
 import FormationPitch from '../components/FormationPitch';
 import { ENVIRONMENT_PRESETS } from '../data/environmentPresets';
+import { MATCH_IMPORTANCE_LEVELS } from '../data/matchImportance';
 import { referenceData } from '../data/referenceData';
 import { FORMATIONS, buildLineupSlots } from '../data/formations';
 import { DEFAULT_ENVIRONMENT, EnvironmentState } from '../domain/environmentTypes';
@@ -45,6 +46,8 @@ const buildRandomEnvironment = (): EnvironmentState => {
   const temperatureC = Math.round(-2 + Math.random() * 34);
   const windSpeed = Math.random() * 7;
   const windDirection = Math.random() * 360;
+  const matchImportance =
+    MATCH_IMPORTANCE_LEVELS[Math.floor(Math.random() * MATCH_IMPORTANCE_LEVELS.length)].id;
   return {
     weather,
     pitch,
@@ -52,7 +55,8 @@ const buildRandomEnvironment = (): EnvironmentState => {
     wind: {
       x: Number((windSpeed * Math.cos(toRadians(windDirection))).toFixed(2)),
       y: Number((windSpeed * Math.sin(toRadians(windDirection))).toFixed(2))
-    }
+    },
+    matchImportance
   };
 };
 
@@ -269,6 +273,11 @@ const TeamSetupPage = () => {
     updateEnvironment({ wind });
   };
 
+  const handleMatchImportanceChange = (value: EnvironmentState['matchImportance']) => {
+    setSelectedPresetId(CUSTOM_PRESET_ID);
+    updateEnvironment({ matchImportance: value });
+  };
+
   const availableBench = useMemo(() => {
     const lineupIds = new Set(selectedTeam.slots.map((slot) => slot.playerId).filter(Boolean));
     return selectedTeam.roster.filter((player) => !lineupIds.has(player.id ?? ''));
@@ -360,6 +369,25 @@ const TeamSetupPage = () => {
                 {ENVIRONMENT_PRESETS.find((preset) => preset.id === selectedPresetId)?.description}
               </div>
             )}
+          </div>
+          <div>
+            <div>Match Importance</div>
+            <select
+              className="select"
+              value={environment.matchImportance}
+              onChange={(event) =>
+                handleMatchImportanceChange(event.target.value as EnvironmentState['matchImportance'])
+              }
+            >
+              {MATCH_IMPORTANCE_LEVELS.map((level) => (
+                <option key={level.id} value={level.id}>
+                  {level.name}
+                </option>
+              ))}
+            </select>
+            <div style={{ marginTop: '6px', fontSize: '13px', color: '#6b7280' }}>
+              {MATCH_IMPORTANCE_LEVELS.find((level) => level.id === environment.matchImportance)?.description}
+            </div>
           </div>
           <div>
             <div>Weather</div>

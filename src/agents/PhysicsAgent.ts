@@ -55,10 +55,19 @@ export class PhysicsAgent {
   private updatePlayers(state: SimulationState, dt: number) {
     const env = this.getEnvironmentModifiers();
     for (const player of state.players) {
+      if (player.discipline?.red) {
+        player.velocity.x = 0;
+        player.velocity.y = 0;
+        player.targetPosition = { ...player.position };
+        player.tacticalPosition = { ...player.position };
+        continue;
+      }
       const pace = getAttribute(player, 'pace');
       const acceleration = getAttribute(player, 'acceleration');
       const agility = getAttribute(player, 'agility');
       const stamina = getAttribute(player, 'stamina');
+      const adaptability = getAttribute(player, 'adaptability');
+      const injuryProneness = getAttribute(player, 'injury_proneness');
       const age = player.age ?? 24;
       const heightCm = player.heightCm ?? 180;
       const weightKg = player.weightKg ?? 75;
@@ -70,6 +79,8 @@ export class PhysicsAgent {
       const matchProgress = Math.min(state.time / 5400, 1);
       let staminaPenalty = (1 - stamina / 100) * 0.35 * matchProgress * env.fatigueFactor;
       staminaPenalty *= playstyleMultiplier(player, 'relentless', 0.85, 0.7);
+      staminaPenalty *= 1 - (adaptability / 100) * 0.08;
+      staminaPenalty *= 1 + (injuryProneness / 100) * 0.08;
       const staminaFactor = 1 - staminaPenalty;
 
       const ageFactor =
@@ -88,19 +99,31 @@ export class PhysicsAgent {
       maxSpeed *= playstyleMultiplier(player, 'technical', 1.03, 1.07);
       accel *= playstyleMultiplier(player, 'technical', 1.03, 1.07);
 
-      const wanderRadius = 3.5 * agilityFactor;
+      const fatigue = clamp(player.fatigue ?? 0, 0, 1);
+      maxSpeed *= 1 - fatigue * 0.45;
+      accel *= 1 - fatigue * 0.5;
+
+      if (player.injury) {
+        const severity = clamp(player.injury.severity, 0, 1);
+        maxSpeed *= 1 - severity * 0.35;
+        accel *= 1 - severity * 0.4;
+      }
+
+      const wanderScale = clamp(player.tacticalWander ?? 1, 0.6, 1.6);
+      const wanderRadius = 3.5 * agilityFactor * wanderScale;
+      const basePosition = player.tacticalPosition ?? player.homePosition;
 
       player.targetTimer -= dt;
       if (player.targetTimer <= 0) {
-        player.targetTimer = 2 + Math.random() * 3;
+        player.targetTimer = (2 + Math.random() * 3) / wanderScale;
         player.targetPosition = {
           x: clamp(
-            player.homePosition.x + (Math.random() * 2 - 1) * wanderRadius,
+            basePosition.x + (Math.random() * 2 - 1) * wanderRadius,
             player.radius,
             this.pitchWidth - player.radius
           ),
           y: clamp(
-            player.homePosition.y + (Math.random() * 2 - 1) * wanderRadius,
+            basePosition.y + (Math.random() * 2 - 1) * wanderRadius,
             player.radius,
             this.pitchHeight - player.radius
           )

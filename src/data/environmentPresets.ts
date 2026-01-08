@@ -23,7 +23,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'clear',
       pitch: 'good',
       temperatureC: 18,
-      wind: windFrom(1.2, 120)
+      wind: windFrom(1.2, 120),
+      matchImportance: 'league'
     }
   },
   {
@@ -34,7 +35,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'overcast',
       pitch: 'good',
       temperatureC: 14,
-      wind: windFrom(3.8, 210)
+      wind: windFrom(3.8, 210),
+      matchImportance: 'league'
     }
   },
   {
@@ -45,7 +47,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'clear',
       pitch: 'pristine',
       temperatureC: 31,
-      wind: windFrom(1.5, 60)
+      wind: windFrom(1.5, 60),
+      matchImportance: 'league'
     }
   },
   {
@@ -56,7 +59,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'overcast',
       pitch: 'worn',
       temperatureC: 27,
-      wind: windFrom(2.5, 300)
+      wind: windFrom(2.5, 300),
+      matchImportance: 'league'
     }
   },
   {
@@ -67,7 +71,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'rain',
       pitch: 'good',
       temperatureC: 12,
-      wind: windFrom(3.2, 170)
+      wind: windFrom(3.2, 170),
+      matchImportance: 'league'
     }
   },
   {
@@ -78,7 +83,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'storm',
       pitch: 'worn',
       temperatureC: 10,
-      wind: windFrom(6.5, 250)
+      wind: windFrom(6.5, 250),
+      matchImportance: 'league'
     }
   },
   {
@@ -89,7 +95,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'snow',
       pitch: 'heavy',
       temperatureC: -1,
-      wind: windFrom(2.8, 340)
+      wind: windFrom(2.8, 340),
+      matchImportance: 'league'
     }
   },
   {
@@ -100,7 +107,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'overcast',
       pitch: 'good',
       temperatureC: 2,
-      wind: windFrom(2.2, 40)
+      wind: windFrom(2.2, 40),
+      matchImportance: 'league'
     }
   },
   {
@@ -111,7 +119,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'clear',
       pitch: 'good',
       temperatureC: 16,
-      wind: windFrom(5.4, 90)
+      wind: windFrom(5.4, 90),
+      matchImportance: 'league'
     }
   },
   {
@@ -122,7 +131,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'rain',
       pitch: 'heavy',
       temperatureC: 8,
-      wind: windFrom(2.6, 200)
+      wind: windFrom(2.6, 200),
+      matchImportance: 'league'
     }
   },
   {
@@ -133,7 +143,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'clear',
       pitch: 'pristine',
       temperatureC: 20,
-      wind: windFrom(1.8, 10)
+      wind: windFrom(1.8, 10),
+      matchImportance: 'league'
     }
   },
   {
@@ -144,7 +155,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'overcast',
       pitch: 'worn',
       temperatureC: 11,
-      wind: windFrom(2.9, 130)
+      wind: windFrom(2.9, 130),
+      matchImportance: 'league'
     }
   },
   {
@@ -155,7 +167,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'clear',
       pitch: 'pristine',
       temperatureC: 19,
-      wind: windFrom(1.1, 85)
+      wind: windFrom(1.1, 85),
+      matchImportance: 'final'
     }
   },
   {
@@ -166,7 +179,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'overcast',
       pitch: 'worn',
       temperatureC: 13,
-      wind: windFrom(3.1, 150)
+      wind: windFrom(3.1, 150),
+      matchImportance: 'derby'
     }
   },
   {
@@ -177,7 +191,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'clear',
       pitch: 'good',
       temperatureC: 9,
-      wind: windFrom(4.8, 20)
+      wind: windFrom(4.8, 20),
+      matchImportance: 'league'
     }
   },
   {
@@ -188,7 +203,8 @@ export const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       weather: 'clear',
       pitch: 'good',
       temperatureC: 17,
-      wind: windFrom(0.6, 180)
+      wind: windFrom(0.6, 180),
+      matchImportance: 'training'
     }
   }
 ];

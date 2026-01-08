@@ -4,6 +4,8 @@
   shots: number;
   goals: number;
   fouls: number;
+  yellowCards: number;
+  redCards: number;
   substitutions: number;
 };
 

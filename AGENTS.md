@@ -11,6 +11,11 @@ This project organizes the simulation game into distinct "agents." Each agent en
  - Communicate with PhysicsAgent and RulesAgent to handle in-play events and ensure compliance with official FIFA rules.
  - Drive the possession-based action loop (carries, targeted passes, shots) and coordinate restarts (throw-ins, corners, free kicks, penalties, kick-offs).
  - Apply player traits and footedness modifiers to decision making (carry, pass, shoot).
+ - Apply role and duty behaviors to positioning, pressing, and decision biases in and out of possession.
+ - Maintain tactical shape (line heights, pressing triggers, marking assignments) to drive off-ball movement.
+ - Track morale swings, fatigue accumulation, and injury events, adjusting performance based on match importance.
+ - Resolve ball contests (tackles, interceptions, miscontrols, aerial duels), goalkeeper saves, pass/shot variance, and loose-ball rebounds to create realistic turnovers.
+ - Execute structured set-piece routines (corners, free kicks, throw-ins, penalties, kick-offs) and apply advantage/card discipline outcomes.
  - Trigger commentary updates to UIAgent and record match statistics for StatsAgent.
 * **Interactions:** Calls PhysicsAgent for position and movement updates, consults RulesAgent for rule enforcement, notifies UIAgent about state changes, and receives commands from PlaybackAgent (speed changes, pause, resume).
 
@@ -19,6 +24,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
 * **Purpose:** Implements realistic physics for the ball and players. This includes movement, collisions, and ball trajectory.
 * **Responsibilities:**
  - Calculate player movements based on acceleration, agility, balance, pace, stamina, and strength attributes.
+ - Apply injury penalties and fatigue modifiers to movement speeds.
  - Model ball motion with spin, friction, rebound effects, and environmental factors (wind, weather, pitch condition). Ensure collisions between ball and players, pitch boundaries, and goal posts are realistic.
  - Provide position updates at each simulation frame to GameEngineAgent.
 * **Interactions:** Receives target actions from GameEngineAgent (e.g., pass, shot, run) and returns updated positions and velocities. Works closely with RulesAgent to detect offside and fouls.
@@ -51,6 +57,8 @@ This project organizes the simulation game into distinct "agents." Each agent en
  - Implement rule checks for offside, fouls, free kicks, penalties, throw-ins, goal kicks, and substitutions. Align these checks with team instructions and player roles as needed.
  - Provide restart decisions and placement data for set pieces and kick-offs.
  - Apply pressure modifiers so defenders influence pass/shot outcomes.
+ - Decide advantage play and card discipline (yellow/red) based on foul severity and context.
+ - Scale pressure effects based on match importance.
  - Enforce substitution limits and stoppage time based on match context.
  - Work with PhysicsAgent to detect rule infractions and with CommentaryAgent to provide context for calls.
 * **Interactions:** Receives event data from PhysicsAgent and GameEngineAgent; communicates decisions back to GameEngineAgent and CommentaryAgent.

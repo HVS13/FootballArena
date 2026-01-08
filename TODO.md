@@ -34,6 +34,14 @@ This file outlines the implementation tasks required to deliver the first iterat
  - Schedule match events (kick-off, half-time, full-time) and maintain the game clock.
  - Build a possession-driven action loop (carry, pass, shoot) and pause for restarts.
  - Add targeted passing logic with pressure-aware decision making.
+ - Use roles and duties to bias positioning, pressing, and decisions in and out of possession.
+ - Add match-importance weighting, morale swings, fatigue accumulation, and injury knocks that affect performance.
+- Add tackle/interception/miscontrol contests so possession changes are earned.
+- Add aerial duels and goalkeeper save logic for on-target shots.
+- Add pass/shot trajectory variance, goalkeeper distribution logic, and defensive marking/compactness.
+ - Add loose-ball deflections and rebounds so saves and blocks stay in play.
+ - Add off-ball movement and tactical shape logic (line heights, pressing triggers, marking assignments).
+ - Add structured set-piece routines (corners, free kicks, throw-ins) and referee advantage/card discipline flow.
 
 6. **Implement RulesAgent**
  - Encode basic FIFA rules: offside detection, fouls, free kicks, penalties, throw-ins, goal kicks, and substitution limits.
@@ -50,6 +58,7 @@ This file outlines the implementation tasks required to deliver the first iterat
  - Represent players as coloured circles with foot indicators.
  - Display match commentary and statistics below the pitch.
  - Expose controls for match speed and substitutions; integrate with PlaybackAgent.
+ - Add match HUD overlays for fatigue, morale, injuries, and tactical role/duty changes.
 
 9. **Implement PlaybackAgent**
  - Connect UI controls to simulation speed adjustments.
@@ -69,3 +78,9 @@ This file outlines the implementation tasks required to deliver the first iterat
 * **Advanced AI.** Add intelligent behaviours for computer-controlled teams.
 * **Procedural commentary.** Enhance CommentaryAgent with richer, more context-aware descriptions.
 * **Match environment factors.** Model weather, wind, and pitch conditions that alter ball physics and fatigue.
+
+## Completed (Recent)
+
+- Added tactical shape logic with line heights, press triggers, and marking assignments.
+- Implemented structured set-piece routines plus advantage and card discipline flow.
+- Added match HUD overlays for morale, fatigue, injuries, and card tracking.

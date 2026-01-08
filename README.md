@@ -8,13 +8,16 @@ Key features include:
 
 * **Realistic physics:** Player and ball movements adhere to real-world dynamics, influenced by player attributes such as pace, stamina, agility and strength.
 * **Comprehensive player data:** Users can import custom player lists with full attribute sets (technical, mental, physical, goalkeeping, hidden) on a 0-100 scale, plus player traits and physical profiles.
-* **Detailed tactics:** Full support for Football Manager-style team instructions, player roles, and duties. These dictate how teams play, from passing directness to pressing traps and defensive lines.
+* **Detailed tactics:** Football Manager-style team instructions, player roles, and duties now shape positioning, pressing, and decision biases (passing, carrying, shooting).
 * **2D match view:** A top-down pitch with circular player icons (and foot indicators) similar to Football Manager. Live commentary and real-time statistics are displayed below the pitch.
 * **Adjustable match speed:** Users can toggle simulation speed between x2, x4, x8, and x16, or pause/resume the match at any time.
 * **Substitutions and rule enforcement:** The game enforces official FIFA rules and allows in-game substitutions with the correct limits.
-* **Possession-driven actions:** The simulation progresses through possession, with carries, targeted passes, shots, and stoppages flowing from the ball carrier under pressure.
+* **Contested possession:** The simulation resolves tackles, interceptions, miscontrols, aerial duels, goalkeeper saves, pass/shot variance, and loose-ball rebounds so turnovers feel more realistic.
+* **Set-piece routines and discipline:** Corners, free kicks, throw-ins, penalties, and kick-offs are structured; fouls can play advantage and trigger yellow/red cards.
 * **Match environment effects:** Weather, wind, temperature, and pitch conditions influence ball physics and player fatigue.
 * **Player traits:** FM player preferred moves modify decisions like carrying, passing, and shooting.
+* **Match importance, morale, and fatigue:** Match importance scales pressure and morale swings; morale and fatigue evolve over time, impacting decisions and movement, with injuries introducing temporary limitations.
+* **Match HUD overlays:** On-pitch overlays summarize fatigue, morale, injuries, and discipline per team.
 
 ## v0.1 Scope and Acceptance Criteria
 
@@ -25,11 +28,14 @@ Key features include:
 - FM26 team instructions, roles, and duties available in UI.
 - EA FC 26 PlayStyles available and applied to gameplay (passing, shooting, dribbling, physicality).
 - Match environment configuration available in setup (weather, wind, temperature, pitch condition, presets, randomize).
+- Match importance, morale shifts, fatigue accumulation, and basic injury knocks impacting performance.
+- Structured set pieces (corners, free kicks, throw-ins, penalties, kick-offs) with advantage/card discipline.
 - 2D top-down pitch with players as circles + foot indicator, officials visible.
 - Real-time simulation with fixed-tick engine, rendering at 60fps.
 - Speed controls x2/x4/x8/x16 and pause/resume.
 - Substitutions with official limits (5 subs in 3 windows + halftime).
 - Live commentary feed and live match stats panel.
+- Match HUD overlays for fatigue, morale, injuries, and cards.
 
 **Out of scope (v0.1):**
 - Online multiplayer and matchmaking.
@@ -64,6 +70,32 @@ Key features include:
 3. **Assess your skills.** Use `SKILLS.md` to identify the knowledge domains necessary for this project. If your expertise is lacking in a particular area, plan to study or recruit collaborators accordingly.
 4. **Plan the tasks.** Refer to `TODO` for a prioritised list of tasks. Start with core functionality: data import, formation setup, physics engine, and match simulation. Leave advanced features (networking, AI opponents) for later iterations.
 5. **Set up your development environment.** This project assumes a modern Node.js/TypeScript setup for both server and client code. Use a package manager (npm or yarn) and a bundler (Vite, Webpack) of your choice.
+
+## Run Locally (Step-by-Step)
+
+1. **Install Node.js 18+ (includes npm).**
+2. **Open PowerShell or Terminal.**
+3. **Go to the project folder:**
+   ```bash
+   cd C:\Git\FootballArena
+   ```
+4. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+5. **Start the dev server:**
+   ```bash
+   npm run dev
+   ```
+6. **Open the URL printed in the terminal** (Vite defaults to `http://localhost:5173`).
+
+Optional commands:
+
+```bash
+npm test
+npm run build
+npm run preview
+```
 
 ## Reference Data Updates
 

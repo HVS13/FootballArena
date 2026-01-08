@@ -4,6 +4,7 @@ import PitchCanvas from '../components/PitchCanvas';
 import { CommentaryLine, MatchStats } from '../domain/matchTypes';
 import { RenderState, TeamState } from '../domain/simulationTypes';
 import { TeamSetupState } from '../domain/teamSetupTypes';
+import { referenceData } from '../data/referenceData';
 import { useAppState } from '../state/appState';
 
 type SubSelection = {
@@ -24,6 +25,27 @@ const formatRestartLabel = (value: RestartInfo['type']) =>
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+
+const toLabel = (value: string) =>
+  value
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+const roleNameMap = new Map<string, string>(
+  Object.values(referenceData.roles)
+    .flat()
+    .map((role) => [role.id, role.name])
+);
+
+const dutyNameMap = new Map<string, string>(referenceData.duties.map((duty) => [duty.id, duty.name]));
+
+const formatRoleDuty = (roleId?: string | null, dutyId?: string | null) => {
+  const roleLabel = roleId ? roleNameMap.get(roleId) ?? toLabel(roleId) : '';
+  const dutyLabel = dutyId ? dutyNameMap.get(dutyId) ?? toLabel(dutyId) : '';
+  if (roleLabel && dutyLabel) return `${roleLabel} (${dutyLabel})`;
+  return roleLabel || dutyLabel;
+};
 
 const buildRosterNameMap = (setup: TeamSetupState | null) => {
   const map: Record<string, Record<string, string>> = {};
@@ -85,6 +107,73 @@ const MatchPage = () => {
     }
     return [];
   }, [renderState, state.teamSetup]);
+
+  const hudData = useMemo(() => {
+    if (!renderState || teamList.length === 0) return [];
+    return teamList.map((team) => {
+      const players = renderState.players.filter((player) => player.teamId === team.id);
+      const count = players.length || 1;
+      const avgFatigue = players.reduce((sum, player) => sum + (player.fatigue ?? 0), 0) / count;
+      const avgMorale = players.reduce((sum, player) => sum + (player.morale ?? 60), 0) / count;
+      const injuries = players.filter((player) => player.injury).length;
+      const yellowCards =
+        matchStats?.byTeam[team.id]?.yellowCards ??
+        players.reduce((sum, player) => sum + (player.discipline?.yellow ?? 0), 0);
+      const redCards =
+        matchStats?.byTeam[team.id]?.redCards ??
+        players.filter((player) => player.discipline?.red).length;
+
+      const alerts: Array<{ id: string; label: string; detail: string }> = [];
+      const fatigued = players
+        .filter((player) => (player.fatigue ?? 0) > 0.7)
+        .sort((a, b) => (b.fatigue ?? 0) - (a.fatigue ?? 0));
+
+      fatigued.slice(0, 2).forEach((player) => {
+        const roleDuty = formatRoleDuty(player.roleId, player.dutyId);
+        alerts.push({
+          id: `fatigue-${player.id}`,
+          label: player.name,
+          detail: `Fatigue ${Math.round((player.fatigue ?? 0) * 100)}%${roleDuty ? ` - ${roleDuty}` : ''}`
+        });
+      });
+
+      players
+        .filter((player) => player.injury)
+        .slice(0, 2)
+        .forEach((player) => {
+          if (alerts.length >= 3) return;
+          const roleDuty = formatRoleDuty(player.roleId, player.dutyId);
+          alerts.push({
+            id: `injury-${player.id}`,
+            label: player.name,
+            detail: `Injured${roleDuty ? ` - ${roleDuty}` : ''}`
+          });
+        });
+
+      players
+        .filter((player) => player.discipline?.red)
+        .slice(0, 1)
+        .forEach((player) => {
+          if (alerts.length >= 3) return;
+          const roleDuty = formatRoleDuty(player.roleId, player.dutyId);
+          alerts.push({
+            id: `red-${player.id}`,
+            label: player.name,
+            detail: `Sent off${roleDuty ? ` - ${roleDuty}` : ''}`
+          });
+        });
+
+      return {
+        team,
+        avgFatigue,
+        avgMorale,
+        injuries,
+        yellowCards,
+        redCards,
+        alerts
+      };
+    });
+  }, [renderState, teamList, matchStats]);
 
   useEffect(() => {
     const engine = new GameEngineAgent({
@@ -202,11 +291,50 @@ const MatchPage = () => {
         </div>
         {restartInfo && (
           <div className="restart-banner">
-            <strong>{formatRestartLabel(restartInfo.type)}</strong> for {restartInfo.teamName} ·{' '}
+            <strong>{formatRestartLabel(restartInfo.type)}</strong> for {restartInfo.teamName} 
             {restartInfo.remaining.toFixed(1)}s
           </div>
         )}
-        <PitchCanvas renderState={renderState} />
+        <div className="pitch-wrapper">
+          <PitchCanvas renderState={renderState} />
+          {hudData.length > 0 && (
+            <div className="match-hud">
+              {hudData.map((entry) => (
+                <div key={entry.team.id} className="hud-card">
+                  <div className="hud-header">
+                    <span style={{ color: entry.team.color }}>{entry.team.name}</span>
+                    <span>
+                      YC {entry.yellowCards} | RC {entry.redCards}
+                    </span>
+                  </div>
+                  <div className="hud-metrics">
+                    <div className="hud-metric">
+                      <span>Avg Fatigue</span>
+                      <strong>{Math.round(entry.avgFatigue * 100)}%</strong>
+                    </div>
+                    <div className="hud-metric">
+                      <span>Avg Morale</span>
+                      <strong>{Math.round(entry.avgMorale)}</strong>
+                    </div>
+                    <div className="hud-metric">
+                      <span>Injuries</span>
+                      <strong>{entry.injuries}</strong>
+                    </div>
+                  </div>
+                  <div className="hud-alerts">
+                    {entry.alerts.length === 0 && <div className="hud-muted">No alerts</div>}
+                    {entry.alerts.map((alert) => (
+                      <div key={alert.id} className="hud-alert">
+                        <span>{alert.label}</span>
+                        <span>{alert.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="controls-row" style={{ marginTop: '16px' }}>
           {[2, 4, 8, 16].map((speed) => (
             <button
@@ -341,6 +469,16 @@ const MatchPage = () => {
               <span>Goals</span>
               <span>{getStatValue(homeTeam.id, 'goals')}</span>
               <span>{getStatValue(awayTeam.id, 'goals')}</span>
+            </div>
+            <div className="stats-row">
+              <span>Yellow Cards</span>
+              <span>{getStatValue(homeTeam.id, 'yellowCards')}</span>
+              <span>{getStatValue(awayTeam.id, 'yellowCards')}</span>
+            </div>
+            <div className="stats-row">
+              <span>Red Cards</span>
+              <span>{getStatValue(homeTeam.id, 'redCards')}</span>
+              <span>{getStatValue(awayTeam.id, 'redCards')}</span>
             </div>
             <div className="stats-row">
               <span>Fouls</span>
