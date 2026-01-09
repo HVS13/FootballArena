@@ -17,9 +17,6 @@ const PitchCanvas = ({ renderState }: PitchCanvasProps) => {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = '#1f8f4a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     const margin = 24;
     const pitchWidth = canvas.width - margin * 2;
     const pitchHeight = canvas.height - margin * 2;
@@ -31,7 +28,25 @@ const PitchCanvas = ({ renderState }: PitchCanvasProps) => {
       y: margin + y * scaleY
     });
 
-    ctx.strokeStyle = '#e5e7eb';
+    const grassDark = '#1f6b3f';
+    const grassLight = '#2a7f48';
+    const pitchLine = '#e6f4ea';
+    const background = '#0b2c1c';
+
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = grassDark;
+    ctx.fillRect(margin, margin, pitchWidth, pitchHeight);
+
+    const stripeCount = 8;
+    const stripeWidth = pitchWidth / stripeCount;
+    for (let i = 0; i < stripeCount; i += 1) {
+      ctx.fillStyle = i % 2 === 0 ? grassLight : grassDark;
+      ctx.fillRect(margin + i * stripeWidth, margin, stripeWidth, pitchHeight);
+    }
+
+    ctx.strokeStyle = pitchLine;
     ctx.lineWidth = 2;
     ctx.strokeRect(margin, margin, pitchWidth, pitchHeight);
 
@@ -40,26 +55,91 @@ const PitchCanvas = ({ renderState }: PitchCanvasProps) => {
     ctx.lineTo(canvas.width / 2, canvas.height - margin);
     ctx.stroke();
 
+    const center = project(DEFAULT_PITCH.width / 2, DEFAULT_PITCH.height / 2);
     ctx.beginPath();
-    ctx.arc(canvas.width / 2, canvas.height / 2, 60, 0, Math.PI * 2);
+    ctx.arc(center.x, center.y, 9.15 * scaleX, 0, Math.PI * 2);
     ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, 0.8 * scaleX, 0, Math.PI * 2);
+    ctx.fillStyle = pitchLine;
+    ctx.fill();
+
+    const drawBox = (boxWidth: number, boxHeight: number, leftX: number, topY: number) => {
+      ctx.strokeRect(
+        margin + leftX * scaleX,
+        margin + topY * scaleY,
+        boxWidth * scaleX,
+        boxHeight * scaleY
+      );
+    };
+
+    const boxHeight = 40.32;
+    const boxTop = (DEFAULT_PITCH.height - boxHeight) / 2;
+    drawBox(16.5, boxHeight, 0, boxTop);
+    drawBox(16.5, boxHeight, DEFAULT_PITCH.width - 16.5, boxTop);
+
+    const sixHeight = 18.32;
+    const sixTop = (DEFAULT_PITCH.height - sixHeight) / 2;
+    drawBox(5.5, sixHeight, 0, sixTop);
+    drawBox(5.5, sixHeight, DEFAULT_PITCH.width - 5.5, sixTop);
+
+    const leftPenalty = project(11, DEFAULT_PITCH.height / 2);
+    const rightPenalty = project(DEFAULT_PITCH.width - 11, DEFAULT_PITCH.height / 2);
+    ctx.beginPath();
+    ctx.arc(leftPenalty.x, leftPenalty.y, 0.6 * scaleX, 0, Math.PI * 2);
+    ctx.arc(rightPenalty.x, rightPenalty.y, 0.6 * scaleX, 0, Math.PI * 2);
+    ctx.fillStyle = pitchLine;
+    ctx.fill();
+
+    const drawPenaltyArc = (isLeft: boolean) => {
+      const radius = 9.15 * scaleX;
+      const spotX = isLeft ? 11 : DEFAULT_PITCH.width - 11;
+      const boxX = isLeft ? 16.5 : DEFAULT_PITCH.width - 16.5;
+      const angle = Math.acos((boxX - spotX) / 9.15);
+      const startAngle = isLeft ? -angle : Math.PI - angle;
+      const endAngle = isLeft ? angle : Math.PI + angle;
+      const spot = project(spotX, DEFAULT_PITCH.height / 2);
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, radius, startAngle, endAngle);
+      ctx.stroke();
+    };
+
+    drawPenaltyArc(true);
+    drawPenaltyArc(false);
 
     if (!renderState) return;
 
-    const teamColors = new Map(renderState.teams.map((team) => [team.id, team.color]));
+    const teamColors = new Map(
+      renderState.teams.map((team) => [team.id, { primary: team.primaryColor, secondary: team.secondaryColor }])
+    );
 
     for (const player of renderState.players) {
       const pos = project(player.position.x, player.position.y);
       const radius = player.radius * scaleX;
-      ctx.fillStyle = teamColors.get(player.teamId) ?? '#ffffff';
+      const colors = teamColors.get(player.teamId) ?? { primary: '#f8fafc', secondary: '#0f172a' };
+      ctx.fillStyle = colors.primary;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
       ctx.fill();
 
-      const velLength = Math.hypot(player.velocity.x, player.velocity.y) || 1;
-      const footOffsetX = (player.velocity.x / velLength) * radius * 0.6;
-      const footOffsetY = (player.velocity.y / velLength) * radius * 0.6;
-      ctx.fillStyle = '#0f172a';
+      const velLength = Math.hypot(player.velocity.x, player.velocity.y);
+      const directionX = velLength > 0.2 ? player.velocity.x / velLength : 0;
+      const directionY = velLength > 0.2 ? player.velocity.y / velLength : 1;
+      const footOffsetX = directionX * radius * 0.6;
+      const footOffsetY = directionY * radius * 0.6;
+      ctx.strokeStyle = colors.secondary;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius - 1, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = colors.secondary;
       ctx.beginPath();
       ctx.arc(pos.x + footOffsetX, pos.y + footOffsetY, radius * 0.35, 0, Math.PI * 2);
       ctx.fill();

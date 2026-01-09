@@ -13,7 +13,8 @@ export type PlayerInjury = {
 export type TeamState = {
   id: string;
   name: string;
-  color: string;
+  primaryColor: string;
+  secondaryColor: string;
 };
 
 export type PlayerState = {

@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DataImportAgent } from '../agents/DataImportAgent';
 import FormationPitch from '../components/FormationPitch';
@@ -7,12 +7,16 @@ import { MATCH_IMPORTANCE_LEVELS } from '../data/matchImportance';
 import { referenceData } from '../data/referenceData';
 import { FORMATIONS, buildLineupSlots } from '../data/formations';
 import { DEFAULT_SET_PIECE_SETTINGS, SET_PIECE_WIZARD_QUESTIONS } from '../data/setPieceWizard';
+import { TACTICAL_PRESETS } from '../data/tacticalPresets';
 import { DEFAULT_ENVIRONMENT, EnvironmentState } from '../domain/environmentTypes';
 import { ImportError, TeamImport } from '../domain/types';
 import { TeamSetup, TeamSetupState } from '../domain/teamSetupTypes';
 import { useAppState } from '../state/appState';
 
-const TEAM_COLORS = ['#f43f5e', '#38bdf8'];
+const TEAM_KITS = [
+  { primary: '#f43f5e', secondary: '#f8fafc' },
+  { primary: '#38bdf8', secondary: '#0f172a' }
+];
 const WEATHER_OPTIONS = ['clear', 'overcast', 'rain', 'snow', 'storm'] as const;
 const PITCH_OPTIONS = ['pristine', 'good', 'worn', 'heavy'] as const;
 const CUSTOM_PRESET_ID = 'custom';
@@ -38,8 +42,49 @@ const buildInstructionDefaults = () => {
 };
 
 const clampValue = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const clampPosition = (value: number) => clampValue(value, 0.04, 0.96);
 
 const toRadians = (deg: number) => (deg * Math.PI) / 180;
+
+const buildOutOfPossessionSlots = (team: TeamSetup, teamIndex: number) => {
+  const direction = teamIndex === 1 ? -1 : 1;
+  const instructions = team.instructions;
+  const lineOfEngagement = instructions.line_of_engagement ?? 'Mid Block';
+  const defensiveLine = instructions.defensive_line ?? 'Standard';
+  const defensiveLineBehavior = instructions.defensive_line_behaviour ?? 'Balanced';
+  const defensiveTransition = instructions.defensive_transition ?? 'Standard';
+
+  const engagementShift =
+    lineOfEngagement === 'High Press' ? 0.06 : lineOfEngagement === 'Low Block' ? -0.06 : 0.02;
+  const lineShift =
+    defensiveLine === 'Much Higher'
+      ? 0.06
+      : defensiveLine === 'Higher'
+        ? 0.03
+        : defensiveLine === 'Deeper'
+          ? -0.04
+          : 0;
+  const behaviorShift =
+    defensiveLineBehavior === 'Step Up' ? 0.02 : defensiveLineBehavior === 'Offside Trap' ? 0.01 : 0;
+  const transitionShift = defensiveTransition === 'Regroup' ? -0.03 : defensiveTransition === 'Counter-Press' ? 0.01 : 0;
+  const xShift = direction * (engagementShift + lineShift + behaviorShift + transitionShift);
+
+  const baseCompactness =
+    lineOfEngagement === 'Low Block' ? 0.9 : lineOfEngagement === 'Mid Block' ? 0.95 : 1;
+  const compactness = clampValue(
+    baseCompactness - (defensiveTransition === 'Regroup' ? 0.03 : 0),
+    0.85,
+    1
+  );
+
+  return team.slots.map((slot) => ({
+    ...slot,
+    position: {
+      x: clampPosition(slot.position.x + xShift),
+      y: clampPosition(0.5 + (slot.position.y - 0.5) * compactness)
+    }
+  }));
+};
 
 const buildRandomEnvironment = (): EnvironmentState => {
   const weather = WEATHER_OPTIONS[Math.floor(Math.random() * WEATHER_OPTIONS.length)];
@@ -83,7 +128,7 @@ const normalizeRoster = (team: TeamImport | null, fallbackPrefix: string) => {
 const buildTeamSetup = (
   team: TeamImport | null,
   teamId: string,
-  color: string,
+  kit: { primary: string; secondary: string },
   mirror: boolean
 ): TeamSetup => {
   const formation = FORMATIONS[0];
@@ -101,7 +146,9 @@ const buildTeamSetup = (
   return {
     id: teamId,
     name: team?.name ?? (teamId === 'home' ? 'Team A' : 'Team B'),
-    color,
+    formationId: formation.id,
+    primaryColor: kit.primary,
+    secondaryColor: kit.secondary,
     roster,
     slots,
     bench,
@@ -112,10 +159,9 @@ const buildTeamSetup = (
 
 const buildSetupFromTeams = (teams: TeamImport[]) => {
   return {
-    formationId: FORMATIONS[0].id,
     teams: [
-      buildTeamSetup(teams[0] ?? null, 'home', TEAM_COLORS[0], false),
-      buildTeamSetup(teams[1] ?? null, 'away', TEAM_COLORS[1], true)
+      buildTeamSetup(teams[0] ?? null, 'home', TEAM_KITS[0], false),
+      buildTeamSetup(teams[1] ?? null, 'away', TEAM_KITS[1], true)
     ]
   } satisfies TeamSetupState;
 };
@@ -126,6 +172,61 @@ const canStartMatch = (setup: TeamSetupState | null) => {
 };
 
 const roleGroups = Object.entries(referenceData.roles);
+const roleGroupBySlot: Record<string, keyof typeof referenceData.roles> = {
+  gk: 'goalkeeper',
+  lb: 'full_back',
+  rb: 'full_back',
+  lcb: 'centre_back',
+  rcb: 'centre_back',
+  cb: 'centre_back',
+  lwb: 'wing_back',
+  rwb: 'wing_back',
+  dm: 'defensive_midfield',
+  ldm: 'defensive_midfield',
+  rdm: 'defensive_midfield',
+  cm: 'central_midfield',
+  lcm: 'central_midfield',
+  rcm: 'central_midfield',
+  lm: 'wide_midfield',
+  rm: 'wide_midfield',
+  lam: 'attacking_midfield',
+  ram: 'attacking_midfield',
+  cam: 'attacking_midfield',
+  ss: 'attacking_midfield',
+  lw: 'winger',
+  rw: 'winger',
+  st: 'striker',
+  lst: 'striker',
+  rst: 'striker'
+};
+
+const dutyOptionsByGroup: Record<string, string[]> = {
+  goalkeeper: ['defend', 'support'],
+  centre_back: ['defend', 'stopper', 'cover'],
+  full_back: ['defend', 'support', 'attack'],
+  wing_back: ['defend', 'support', 'attack'],
+  defensive_midfield: ['defend', 'support'],
+  central_midfield: ['defend', 'support', 'attack'],
+  wide_midfield: ['support', 'attack'],
+  attacking_midfield: ['support', 'attack'],
+  winger: ['support', 'attack'],
+  striker: ['support', 'attack']
+};
+
+const pickRandom = <T,>(items: T[]) => items[Math.floor(Math.random() * items.length)];
+
+const getRoleOptionsForSlot = (slotId: string) => {
+  const group = roleGroupBySlot[slotId];
+  if (!group) {
+    return roleGroups.flatMap(([, roles]) => roles);
+  }
+  return referenceData.roles[group] ?? [];
+};
+
+const getDutyOptionsForSlot = (slotId: string) => {
+  const group = roleGroupBySlot[slotId];
+  return group ? dutyOptionsByGroup[group] ?? [] : referenceData.duties.map((duty) => duty.id);
+};
 
 const TeamSetupPage = () => {
   const navigate = useNavigate();
@@ -135,9 +236,67 @@ const TeamSetupPage = () => {
   const [teamSetup, setTeamSetup] = useState<TeamSetupState>(() => buildSetupFromTeams([]));
   const [selectedTeamIndex, setSelectedTeamIndex] = useState(0);
   const [selectedPresetId, setSelectedPresetId] = useState(CUSTOM_PRESET_ID);
+  const [selectedTacticPresetByTeam, setSelectedTacticPresetByTeam] = useState<Record<string, string>>({
+    home: 'custom',
+    away: 'custom'
+  });
+  const [instructionTab, setInstructionTab] = useState<'in' | 'transition' | 'out'>('in');
+
+  const transitionInstructionIds = new Set([
+    'attacking_transition',
+    'defensive_transition',
+    'goal_kicks',
+    'gk_distribution_speed',
+    'gk_distribution_target'
+  ]);
+
+  const instructionGroups = {
+    in: referenceData.teamInstructions.inPossession.filter((instruction) => !transitionInstructionIds.has(instruction.id)),
+    transition: [
+      ...referenceData.teamInstructions.inPossession,
+      ...referenceData.teamInstructions.outOfPossession
+    ].filter((instruction) => transitionInstructionIds.has(instruction.id)),
+    out: referenceData.teamInstructions.outOfPossession.filter(
+      (instruction) => !transitionInstructionIds.has(instruction.id)
+    )
+  };
   const agent = new DataImportAgent();
 
   const selectedTeam = teamSetup.teams[selectedTeamIndex];
+  const selectedTacticPresetId = selectedTacticPresetByTeam[selectedTeam.id] ?? 'custom';
+  const selectedPlayersById = useMemo(() => {
+    const map: Record<string, { name: string; shirtNo?: number | null }> = {};
+    selectedTeam.roster.forEach((player) => {
+      if (player.id) {
+        map[player.id] = { name: player.name, shirtNo: player.shirtNo };
+      }
+    });
+    return map;
+  }, [selectedTeam]);
+  const outOfPossessionSlots = useMemo(
+    () => buildOutOfPossessionSlots(selectedTeam, selectedTeamIndex),
+    [selectedTeam, selectedTeamIndex]
+  );
+
+  useEffect(() => {
+    setSelectedTacticPresetByTeam((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      teamSetup.teams.forEach((team) => {
+        if (!next[team.id]) {
+          next[team.id] = 'custom';
+          changed = true;
+        }
+      });
+      Object.keys(next).forEach((teamId) => {
+        if (!teamSetup.teams.some((team) => team.id === teamId)) {
+          delete next[teamId];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [teamSetup.teams]);
   const environment = state.environment ?? DEFAULT_ENVIRONMENT;
   const windSpeed = Math.hypot(environment.wind.x, environment.wind.y);
   const windDirection =
@@ -220,6 +379,136 @@ const TeamSetupPage = () => {
     updateTeam(selectedTeam.id, (team) => ({
       ...team,
       instructions: { ...team.instructions, [instructionId]: value }
+    }));
+  };
+
+  const buildRandomInstructions = (current: Record<string, string>) => {
+    const allInstructions = [
+      ...referenceData.teamInstructions.inPossession,
+      ...referenceData.teamInstructions.outOfPossession
+    ];
+    const randomized: Record<string, string> = { ...current };
+    allInstructions.forEach((instruction) => {
+      const options = instruction.options ?? [];
+      if (!options.length) return;
+      randomized[instruction.id] = options[Math.floor(Math.random() * options.length)];
+    });
+    return randomized;
+  };
+
+  const randomizeInstructions = () => {
+    updateTeam(selectedTeam.id, (team) => ({
+      ...team,
+      instructions: buildRandomInstructions(team.instructions)
+    }));
+    setSelectedTacticPresetByTeam((prev) => ({ ...prev, [selectedTeam.id]: 'custom' }));
+  };
+
+  const randomizeTactics = () => {
+    const formation = pickRandom(FORMATIONS);
+    const randomInstructions = buildRandomInstructions(selectedTeam.instructions);
+    setSelectedTacticPresetByTeam((prev) => ({ ...prev, [selectedTeam.id]: 'custom' }));
+
+    setTeamSetup((prev) => {
+      const teams = prev.teams.map((team, index) => {
+        if (team.id !== selectedTeam.id) return team;
+        const mirror = index === 1;
+        let newSlots = buildLineupSlots(formation, mirror).map((slot, slotIndex) => {
+          const existing = team.slots[slotIndex];
+          return {
+            ...slot,
+            playerId: existing?.playerId ?? slot.playerId,
+            roleId: existing?.roleId ?? slot.roleId,
+            dutyId: existing?.dutyId ?? slot.dutyId
+          };
+        });
+
+        newSlots = newSlots.map((slot) => {
+          const roleOptions = getRoleOptionsForSlot(slot.id);
+          const dutyOptions = getDutyOptionsForSlot(slot.id);
+          const roleId = roleOptions.length ? pickRandom(roleOptions).id : slot.roleId;
+          const dutyId = dutyOptions.length ? pickRandom(dutyOptions) : slot.dutyId;
+          return { ...slot, roleId, dutyId };
+        });
+
+        return {
+          ...team,
+          formationId: formation.id,
+          slots: newSlots,
+          instructions: randomInstructions
+        };
+      });
+
+      return { ...prev, teams };
+    });
+  };
+
+  const applyFormation = (formationId: string) => {
+    const formation = FORMATIONS.find((item) => item.id === formationId);
+    if (!formation) return;
+    setSelectedTacticPresetByTeam((prev) => ({ ...prev, [selectedTeam.id]: 'custom' }));
+
+    setTeamSetup((prev) => {
+      const teams = prev.teams.map((team, index) => {
+        if (team.id !== selectedTeam.id) return team;
+        const mirror = index === 1;
+        const newSlots = buildLineupSlots(formation, mirror).map((slot, slotIndex) => {
+          const existing = team.slots[slotIndex];
+          return {
+            ...slot,
+            playerId: existing?.playerId ?? slot.playerId,
+            roleId: existing?.roleId ?? slot.roleId,
+            dutyId: existing?.dutyId ?? slot.dutyId
+          };
+        });
+        return { ...team, formationId: formation.id, slots: newSlots };
+      });
+      return { ...prev, teams };
+    });
+  };
+
+  const applyTacticalPreset = (presetId: string) => {
+    const preset = TACTICAL_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+
+    const formation = FORMATIONS.find((item) => item.id === preset.formationId);
+    if (!formation) return;
+
+    setTeamSetup((prev) => {
+      const teams = prev.teams.map((team, index) => {
+        if (team.id !== selectedTeam.id) return team;
+        const mirror = index === 1;
+        let newSlots = buildLineupSlots(formation, mirror).map((slot, slotIndex) => {
+          const existing = team.slots[slotIndex];
+          return {
+            ...slot,
+            playerId: existing?.playerId ?? slot.playerId,
+            roleId: existing?.roleId ?? slot.roleId,
+            dutyId: existing?.dutyId ?? slot.dutyId
+          };
+        });
+
+        newSlots = newSlots.map((slot) => {
+          const role = preset.roles[slot.id];
+          if (!role) return slot;
+          return { ...slot, roleId: role.roleId, dutyId: role.dutyId };
+        });
+        return {
+          ...team,
+          formationId: formation.id,
+          slots: newSlots,
+          instructions: { ...team.instructions, ...preset.instructions }
+        };
+      });
+      return { ...prev, teams };
+    });
+  };
+
+  const updateTeamColors = (primaryColor: string, secondaryColor: string) => {
+    updateTeam(selectedTeam.id, (team) => ({
+      ...team,
+      primaryColor,
+      secondaryColor
     }));
   };
 
@@ -472,87 +761,237 @@ const TeamSetupPage = () => {
         </div>
       </section>
 
-      <section className="card">
-        <div className="team-tabs">
-          {teamSetup.teams.map((team, index) => (
+      <section className="card tactics-shell">
+        <div className="tactics-header">
+          <div className="team-tabs">
+            {teamSetup.teams.map((team, index) => (
+              <button
+                key={team.id}
+                className={selectedTeamIndex === index ? 'button' : 'button secondary'}
+                onClick={() => setSelectedTeamIndex(index)}
+              >
+                {team.name}
+              </button>
+            ))}
+          </div>
+          <div className="tactics-actions">
+            <div className="tactics-control">
+              <span className="tactics-label">Formation</span>
+              <select
+                className="select"
+              value={selectedTeam.formationId}
+                onChange={(event) => applyFormation(event.target.value)}
+              >
+                {FORMATIONS.map((formation) => (
+                  <option key={formation.id} value={formation.id}>
+                    {formation.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="tactics-control">
+              <span className="tactics-label">Tactical Preset</span>
+              <select
+                className="select"
+                value={selectedTacticPresetId}
+                onChange={(event) =>
+                  setSelectedTacticPresetByTeam((prev) => ({
+                    ...prev,
+                    [selectedTeam.id]: event.target.value
+                  }))
+                }
+              >
+                <option value="custom">Custom</option>
+                {TACTICAL_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
-              key={team.id}
-              className={selectedTeamIndex === index ? 'button' : 'button secondary'}
-              onClick={() => setSelectedTeamIndex(index)}
+              className="button secondary"
+              onClick={() => applyTacticalPreset(selectedTacticPresetId)}
+              disabled={selectedTacticPresetId === 'custom'}
             >
-              {team.name}
+              Apply Preset
             </button>
-          ))}
-        </div>
-
-        <div className="controls-row" style={{ marginBottom: '16px' }}>
-          <div>
-            Formation
-            <select className="select" value={teamSetup.formationId} disabled>
-              {FORMATIONS.map((formation) => (
-                <option key={formation.id} value={formation.id}>
-                  {formation.name}
-                </option>
-              ))}
-            </select>
+            <button className="button secondary" onClick={randomizeTactics}>
+              Randomize Tactics
+            </button>
           </div>
         </div>
+        {selectedTacticPresetId !== 'custom' && (
+          <div className="tactics-hint">
+            {TACTICAL_PRESETS.find((preset) => preset.id === selectedTacticPresetId)?.description}
+          </div>
+        )}
 
-        <FormationPitch slots={selectedTeam.slots} color={selectedTeam.color} onPositionChange={handlePositionChange} />
-
-        <h3 style={{ marginTop: '20px' }}>Lineup</h3>
-        <div className="field-group">
-          {selectedTeam.slots.map((slot) => (
-            <div key={slot.id}>
-              <strong>{slot.label}</strong>
-              <div>
-                <select
-                  className="select"
-                  value={slot.playerId ?? ''}
-                  onChange={(event) => handleSlotPlayerChange(slot.id, event.target.value)}
-                >
-                  <option value="">Select player</option>
-                  {selectedTeam.roster.map((player) => (
-                    <option key={player.id} value={player.id}>
-                      {player.name}
-                    </option>
-                  ))}
-                </select>
+        <div className="tactics-body">
+          <div className="tactics-column tactics-left">
+            <div className="tactics-card">
+              <div className="tactics-card-header">
+                <div>
+                  <div className="tactics-title">Team Shape</div>
+                  <div className="tactics-subtitle">Drag to adjust roles and spacing.</div>
+                </div>
+                <span className="tactics-chip">{selectedTeam.formationId}</span>
               </div>
-              <div>
-                <select
-                  className="select"
-                  value={slot.roleId ?? ''}
-                  onChange={(event) => handleSlotRoleChange(slot.id, event.target.value)}
-                >
-                  <option value="">Select role</option>
-                  {roleGroups.map(([groupKey, roles]) => (
-                    <optgroup key={groupKey} label={toLabel(groupKey)}>
-                      {roles.map((role) => (
-                        <option key={role.id} value={role.id}>
-                          {role.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
+              <div className="shape-grid">
+                <div className="shape-panel">
+                  <div className="shape-label">In Possession</div>
+                  <FormationPitch
+                    slots={selectedTeam.slots}
+                    playersById={selectedPlayersById}
+                    primaryColor={selectedTeam.primaryColor}
+                    secondaryColor={selectedTeam.secondaryColor}
+                    onPositionChange={handlePositionChange}
+                  />
+                </div>
+                <div className="shape-panel">
+                  <div className="shape-label">Out of Possession</div>
+                  <FormationPitch
+                    slots={outOfPossessionSlots}
+                    playersById={selectedPlayersById}
+                    primaryColor={selectedTeam.primaryColor}
+                    secondaryColor={selectedTeam.secondaryColor}
+                    interactive={false}
+                  />
+                </div>
               </div>
-              <div>
-                <select
-                  className="select"
-                  value={slot.dutyId ?? ''}
-                  onChange={(event) => handleSlotDutyChange(slot.id, event.target.value)}
-                >
-                  <option value="">Select duty</option>
-                  {referenceData.duties.map((duty) => (
-                    <option key={duty.id} value={duty.id}>
-                      {duty.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="kit-controls">
+                <label className="kit-control">
+                  <span>Primary Kit</span>
+                  <input
+                    type="color"
+                    value={selectedTeam.primaryColor}
+                    onChange={(event) => updateTeamColors(event.target.value, selectedTeam.secondaryColor)}
+                  />
+                </label>
+                <label className="kit-control">
+                  <span>Secondary Kit</span>
+                  <input
+                    type="color"
+                    value={selectedTeam.secondaryColor}
+                    onChange={(event) => updateTeamColors(selectedTeam.primaryColor, event.target.value)}
+                  />
+                </label>
               </div>
             </div>
-          ))}
+          </div>
+
+          <div className="tactics-column tactics-center">
+            <div className="tactics-card">
+              <div className="tactics-toolbar">
+                <div className="tactics-tabs">
+                  <button
+                    className={instructionTab === 'in' ? 'button' : 'button secondary'}
+                    onClick={() => setInstructionTab('in')}
+                  >
+                    In Possession
+                  </button>
+                  <button
+                    className={instructionTab === 'transition' ? 'button' : 'button secondary'}
+                    onClick={() => setInstructionTab('transition')}
+                  >
+                    In Transition
+                  </button>
+                  <button
+                    className={instructionTab === 'out' ? 'button' : 'button secondary'}
+                    onClick={() => setInstructionTab('out')}
+                  >
+                    Out of Possession
+                  </button>
+                </div>
+                <button className="button secondary" onClick={randomizeInstructions}>
+                  Randomize Instructions
+                </button>
+              </div>
+              <div className="instruction-grid">
+                {instructionGroups[instructionTab].map((instruction) => (
+                  <div key={instruction.id} className="instruction-card">
+                    <div className="instruction-title">{instruction.name}</div>
+                    <select
+                      className="select compact"
+                      value={selectedTeam.instructions[instruction.id] ?? ''}
+                      onChange={(event) => updateInstruction(instruction.id, event.target.value)}
+                    >
+                      {instruction.options?.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="tactics-column tactics-right">
+            <div className="tactics-card lineup-card">
+              <div className="lineup-title">Lineup</div>
+              <div className="lineup-header">
+                <span>Pos</span>
+                <span>Player</span>
+                <span>Role</span>
+                <span>Duty</span>
+              </div>
+              <div className="lineup-grid">
+                {selectedTeam.slots.map((slot) => (
+                  <div key={slot.id} className="lineup-row">
+                    <div className="lineup-cell lineup-pos">{slot.label}</div>
+                    <div className="lineup-cell">
+                      <select
+                        className="select compact"
+                        value={slot.playerId ?? ''}
+                        onChange={(event) => handleSlotPlayerChange(slot.id, event.target.value)}
+                      >
+                        <option value="">Select</option>
+                        {selectedTeam.roster.map((player) => (
+                          <option key={player.id} value={player.id}>
+                            {player.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="lineup-cell">
+                      <select
+                        className="select compact"
+                        value={slot.roleId ?? ''}
+                        onChange={(event) => handleSlotRoleChange(slot.id, event.target.value)}
+                      >
+                        <option value="">Select</option>
+                        {roleGroups.map(([groupKey, roles]) => (
+                          <optgroup key={groupKey} label={toLabel(groupKey)}>
+                            {roles.map((role) => (
+                              <option key={role.id} value={role.id}>
+                                {role.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="lineup-cell">
+                      <select
+                        className="select compact"
+                        value={slot.dutyId ?? ''}
+                        onChange={(event) => handleSlotDutyChange(slot.id, event.target.value)}
+                      >
+                        <option value="">Select</option>
+                        {referenceData.duties.map((duty) => (
+                          <option key={duty.id} value={duty.id}>
+                            {duty.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -568,49 +1007,6 @@ const TeamSetupPage = () => {
               />{' '}
               {player.name}
             </label>
-          ))}
-        </div>
-      </section>
-
-      <section className="card">
-        <h3>Team Instructions</h3>
-        <h4>In Possession</h4>
-        <div className="field-group">
-          {referenceData.teamInstructions.inPossession.map((instruction) => (
-            <div key={instruction.id}>
-              <div>{instruction.name}</div>
-              <select
-                className="select"
-                value={selectedTeam.instructions[instruction.id] ?? ''}
-                onChange={(event) => updateInstruction(instruction.id, event.target.value)}
-              >
-                {instruction.options?.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
-        </div>
-
-        <h4 style={{ marginTop: '16px' }}>Out of Possession</h4>
-        <div className="field-group">
-          {referenceData.teamInstructions.outOfPossession.map((instruction) => (
-            <div key={instruction.id}>
-              <div>{instruction.name}</div>
-              <select
-                className="select"
-                value={selectedTeam.instructions[instruction.id] ?? ''}
-                onChange={(event) => updateInstruction(instruction.id, event.target.value)}
-              >
-                {instruction.options?.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
           ))}
         </div>
       </section>

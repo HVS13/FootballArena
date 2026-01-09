@@ -87,3 +87,10 @@ This file outlines the implementation tasks required to deliver the first iterat
 - Added off-ball run intents, overlaps, and pass-to-space targeting based on roles and traits.
 - Expanded match statistics (pass accuracy, shots on/off target, xG, corners, offsides, tackles, interceptions, saves).
 - Added Set Piece Wizard settings in team setup to guide marking, delivery, and transitions.
+- Added tactical presets for common formations with roles/duties and instruction randomization.
+- Added kit color controls and updated pitch/player rendering styling.
+- Expanded formation library and tactical presets with historic systems (WM, Pyramid, 4-2-4).
+- Refreshed Team Setup UI into an FM-style tactics board with pitch, lineup table, and instruction cards.
+- Enabled per-team formation selection in Team Setup.
+- Added dual shape previews (in/out of possession) with player number/name labels on the tactics board.
+- Stored tactical preset selection per team to avoid cross-team confusion.

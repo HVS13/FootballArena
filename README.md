@@ -9,7 +9,12 @@ Key features include:
 * **Realistic physics:** Player and ball movements adhere to real-world dynamics, influenced by player attributes such as pace, stamina, agility and strength.
 * **Comprehensive player data:** Users can import custom player lists with full attribute sets (technical, mental, physical, goalkeeping, hidden) on a 0-100 scale, plus player traits and physical profiles.
 * **Detailed tactics:** Football Manager-style team instructions, player roles, and duties now shape positioning, pressing, and decision biases (passing, carrying, shooting).
+* **Per-team formations:** Each team can choose and edit its own formation independently.
 * **2D match view:** A top-down pitch with circular player icons (and foot indicators) similar to Football Manager. Live commentary and real-time statistics are displayed below the pitch.
+* **Kit colors:** Teams can set primary and secondary kit colors that drive player token rendering.
+* **FM-style tactics board:** Formation pitch, lineup table, and instruction cards mirror Football Manager's layout.
+* **Dual shape previews:** In-possession and out-of-possession shapes are shown side by side with labeled player tokens.
+* **Expanded tactical presets:** Includes popular modern and historic formations with roles/duties and instructions pre-filled.
 * **Adjustable match speed:** Users can toggle simulation speed between x2, x4, x8, and x16, or pause/resume the match at any time.
 * **Substitutions and rule enforcement:** The game enforces official FIFA rules and allows in-game substitutions with the correct limits.
 * **Contested possession:** The simulation resolves tackles, interceptions, miscontrols, aerial duels, goalkeeper saves, pass/shot variance, and loose-ball rebounds so turnovers feel more realistic.
@@ -35,6 +40,7 @@ Key features include:
 - Structured set pieces (corners, free kicks, throw-ins, penalties, kick-offs) with advantage/card discipline.
 - Off-ball movement and pass-to-space behavior influenced by roles, traits, and instructions.
 - 2D top-down pitch with players as circles + foot indicator, officials visible.
+- Kit color picker for primary/secondary team colors.
 - Real-time simulation with fixed-tick engine, rendering at 60fps.
 - Speed controls x2/x4/x8/x16 and pause/resume.
 - Substitutions with official limits (5 subs in 3 windows + halftime).
@@ -42,6 +48,10 @@ Key features include:
 - Match HUD overlays for fatigue, morale, injuries, and cards.
 - Expanded stats (pass accuracy, shots on/off target, xG, corners, offsides, tackles, interceptions, saves).
 - Set-piece wizard for selecting marking, delivery, and transition preferences.
+- Tactical presets (popular formations + instructions + roles/duties), plus randomize tactics/instructions.
+- FM-style tactics board layout with formation pitch, lineup table, and instruction cards.
+- Dual shape previews (in/out of possession) with player numbers/names shown on tokens.
+- Per-team formation selection in Team Setup.
 
 **Out of scope (v0.1):**
 - Online multiplayer and matchmaking.

@@ -14,7 +14,9 @@ export type LineupSlot = {
 export type TeamSetup = {
   id: string;
   name: string;
-  color: string;
+  formationId: string;
+  primaryColor: string;
+  secondaryColor: string;
   roster: PlayerImport[];
   slots: LineupSlot[];
   bench: string[];
@@ -23,6 +25,5 @@ export type TeamSetup = {
 };
 
 export type TeamSetupState = {
-  formationId: string;
   teams: TeamSetup[];
 };

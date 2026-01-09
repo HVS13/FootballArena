@@ -104,7 +104,8 @@ const MatchPage = () => {
       return state.teamSetup.teams.map((team) => ({
         id: team.id,
         name: team.name,
-        color: team.color
+        primaryColor: team.primaryColor,
+        secondaryColor: team.secondaryColor
       }));
     }
     return [];
@@ -304,7 +305,7 @@ const MatchPage = () => {
               {hudData.map((entry) => (
                 <div key={entry.team.id} className="hud-card">
                   <div className="hud-header">
-                    <span style={{ color: entry.team.color }}>{entry.team.name}</span>
+                    <span style={{ color: entry.team.primaryColor }}>{entry.team.name}</span>
                     <span>
                       YC {entry.yellowCards} | RC {entry.redCards}
                     </span>

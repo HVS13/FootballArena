@@ -47,8 +47,13 @@ This project organizes the simulation game into distinct "agents." Each agent en
  - Expose drag-and-drop UI components for formation selection and player positioning.
  - Present lists of available team instructions, roles, and duties (loaded by DataImportAgent) with concise descriptions.
  - Provide the set-piece wizard so users can define marking, delivery, and transition preferences.
+ - Allow each team to pick its own formation independently during setup.
+ - Provide tactical presets (formations, instructions, roles/duties) plus randomization for quick starts.
  - Capture user choices and produce a tactical plan that the GameEngineAgent can simulate.
+ - Present an FM-style tactics board layout combining formation pitch, lineup table, and instruction cards.
+ - Show in-possession and out-of-possession shape previews with player labels on the tactics board.
  - Collect match environment settings (weather, wind, pitch condition) including presets and randomisation options.
+ - Expose kit color controls for primary/secondary team colors.
 * **Interactions:** Interacts with UIAgent for front-end elements, obtains lists from DataImportAgent, and passes final tactical configurations to GameEngineAgent.
 
 ## RulesAgent

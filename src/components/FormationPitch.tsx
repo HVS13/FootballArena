@@ -1,25 +1,56 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { LineupSlot } from '../domain/teamSetupTypes';
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 type FormationPitchProps = {
   slots: LineupSlot[];
-  color: string;
-  onPositionChange: (slotId: string, x: number, y: number) => void;
+  playersById: Record<string, { name: string; shirtNo?: number | null }>;
+  primaryColor: string;
+  secondaryColor: string;
+  interactive?: boolean;
+  onPositionChange?: (slotId: string, x: number, y: number) => void;
 };
 
 type DragState = {
   slotId: string;
 };
 
-const FormationPitch = ({ slots, color, onPositionChange }: FormationPitchProps) => {
+const FormationPitch = ({
+  slots,
+  playersById,
+  primaryColor,
+  secondaryColor,
+  interactive = true,
+  onPositionChange
+}: FormationPitchProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
+  const isInteractive = interactive && typeof onPositionChange === 'function';
+
+  const labels = useMemo(
+    () =>
+      slots.map((slot) => {
+        const player = slot.playerId ? playersById[slot.playerId] : null;
+        const initials = player?.name
+          ? player.name
+              .split(' ')
+              .filter(Boolean)
+              .map((part) => part[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase()
+          : slot.label;
+        const tokenText = player?.shirtNo ? String(player.shirtNo) : initials;
+        const labelText = player?.name ?? slot.label;
+        return { tokenText, labelText };
+      }),
+    [slots, playersById]
+  );
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
-      if (!dragging || !containerRef.current) return;
+      if (!dragging || !containerRef.current || !onPositionChange) return;
       const rect = containerRef.current.getBoundingClientRect();
       const x = clamp((event.clientX - rect.left) / rect.width, 0.04, 0.96);
       const y = clamp((event.clientY - rect.top) / rect.height, 0.04, 0.96);
@@ -27,6 +58,7 @@ const FormationPitch = ({ slots, color, onPositionChange }: FormationPitchProps)
     };
 
     const handleUp = () => {
+      if (!dragging) return;
       setDragging(null);
     };
 
@@ -41,24 +73,52 @@ const FormationPitch = ({ slots, color, onPositionChange }: FormationPitchProps)
 
   return (
     <div className="formation-pitch" ref={containerRef}>
-      <div className="pitch-lines" />
-      {slots.map((slot) => (
-        <button
+      <div className="pitch-lines">
+        <div className="pitch-penalty left" />
+        <div className="pitch-penalty right" />
+        <div className="pitch-six left" />
+        <div className="pitch-six right" />
+        <div className="pitch-spot center" />
+        <div className="pitch-spot left" />
+        <div className="pitch-spot right" />
+      </div>
+      {slots.map((slot, index) => (
+        <div
           key={slot.id}
-          type="button"
-          className="player-token"
-          style={{
-            left: `${slot.position.x * 100}%`,
-            top: `${slot.position.y * 100}%`,
-            backgroundColor: color
-          }}
-          onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId);
-            setDragging({ slotId: slot.id });
-          }}
+          className="player-token-wrap"
+          style={
+            {
+              left: `${slot.position.x * 100}%`,
+              top: `${slot.position.y * 100}%`
+            } as CSSProperties
+          }
         >
-          <span>{slot.label}</span>
-        </button>
+          <button
+            type="button"
+            className="player-token"
+            style={
+              {
+                backgroundColor: primaryColor,
+                borderColor: secondaryColor,
+                color: secondaryColor,
+                cursor: isInteractive ? 'grab' : 'default',
+                ['--token-secondary' as string]: secondaryColor
+              } as CSSProperties
+            }
+            onPointerDown={
+              isInteractive
+                ? (event) => {
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    setDragging({ slotId: slot.id });
+                  }
+                : undefined
+            }
+            aria-label={labels[index]?.labelText ?? slot.label}
+          >
+            <span>{labels[index]?.tokenText ?? slot.label}</span>
+          </button>
+          <div className="player-token-label">{labels[index]?.labelText ?? slot.label}</div>
+        </div>
       ))}
     </div>
   );

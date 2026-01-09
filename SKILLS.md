@@ -47,6 +47,7 @@ Implementing a realistic football simulation game demands a wide range of techni
 | **Real-Time Rendering** | Achieve smooth animations and updates within the browser. Optimise drawing routines to avoid frame drops, especially when running at high speed multipliers. |
 | **Accessibility** | Provide keyboard shortcuts and screen-reader-friendly text for commentary and controls. |
 | **Visual Design** | Use appropriate colours and icons to differentiate teams and roles, ensuring readability and consistency. |
+| **Tactics UI Layout** | Build FM-style tactics boards with dual shape previews and labeled player tokens that remain clear at multiple screen sizes. |
 
 ## Artificial Intelligence & Logic
 

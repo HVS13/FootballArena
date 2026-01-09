@@ -154,8 +154,8 @@ const interpolateState = (prev: SimulationState, next: SimulationState, alpha: n
 });
 
 const buildDefaultTeams = (): TeamState[] => [
-  { id: 'home', name: 'Home', color: '#f43f5e' },
-  { id: 'away', name: 'Away', color: '#38bdf8' }
+  { id: 'home', name: 'Home', primaryColor: '#f43f5e', secondaryColor: '#f8fafc' },
+  { id: 'away', name: 'Away', primaryColor: '#38bdf8', secondaryColor: '#0f172a' }
 ];
 
 const formation442 = [
@@ -254,7 +254,8 @@ const buildStateFromSetup = (pitch: PitchDimensions, setup: TeamSetupState): Sim
   const teams = setup.teams.map((team) => ({
     id: team.id,
     name: team.name,
-    color: team.color
+    primaryColor: team.primaryColor,
+    secondaryColor: team.secondaryColor
   }));
 
   const players = setup.teams.flatMap((team) => {
