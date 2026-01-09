@@ -72,6 +72,12 @@ This file outlines the implementation tasks required to deliver the first iterat
  - Write unit tests for DataImportAgent, PhysicsAgent, and RulesAgent.
  - Implement integration tests that simulate a short match and verify physics, rule enforcement, and statistics.
 
+## Backlog (Prioritized)
+
+1. **Refactor GameEngineAgent**
+ - Split into tactical, event, set-piece, and decision modules.
+ - Add unit tests for each module to prevent regressions.
+
 ## Enhancements (Optional)
 
 * **Refactor for multiplayer.** Design and implement NetworkingAgent to handle remote players.
@@ -94,3 +100,11 @@ This file outlines the implementation tasks required to deliver the first iterat
 - Enabled per-team formation selection in Team Setup.
 - Added dual shape previews (in/out of possession) with player number/name labels on the tactics board.
 - Stored tactical preset selection per team to avoid cross-team confusion.
+- Added unit tests for DataImportAgent, PhysicsAgent, and RulesAgent plus a GameEngine integration test.
+- Fixed CSV newline parsing in DataImportAgent.
+- Deepened role-specific behaviors with explicit role archetype movement and decision biases.
+- Expanded playstyle and trait effect coverage across decision logic and rule outcomes.
+- Upgraded set-piece routines to assign Aerial Threat, Box Threat, Creators, and Recovery roles.
+- Added contextual commentary with phrase libraries and late-game intensity cues.
+- Implemented AI-only opponent adaptation with optional assist tactics for human teams.
+- Added keyboard shortcuts, ARIA labels, tooltips, and stats comparison bars for accessibility.

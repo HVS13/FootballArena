@@ -16,6 +16,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
  - Track morale swings, fatigue accumulation, and injury events, adjusting performance based on match importance.
  - Resolve ball contests (tackles, interceptions, miscontrols, aerial duels), goalkeeper saves, pass/shot variance, and loose-ball rebounds to create realistic turnovers.
  - Execute structured set-piece routines (corners, free kicks, throw-ins, penalties, kick-offs) and apply advantage/card discipline outcomes.
+ - Apply AI opponent adaptation logic for AI-controlled teams or when assist tactics are enabled.
  - Trigger commentary updates to UIAgent and record match statistics for StatsAgent.
 * **Interactions:** Calls PhysicsAgent for position and movement updates, consults RulesAgent for rule enforcement, notifies UIAgent about state changes, and receives commands from PlaybackAgent (speed changes, pause, resume).
 
@@ -54,6 +55,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
  - Show in-possession and out-of-possession shape previews with player labels on the tactics board.
  - Collect match environment settings (weather, wind, pitch condition) including presets and randomisation options.
  - Expose kit color controls for primary/secondary team colors.
+ - Let users choose human vs AI control per team and optionally enable AI tactical assistance.
 * **Interactions:** Interacts with UIAgent for front-end elements, obtains lists from DataImportAgent, and passes final tactical configurations to GameEngineAgent.
 
 ## RulesAgent
@@ -101,6 +103,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
 * **Purpose:** Generates text commentary describing the ongoing match.
 * **Responsibilities:**
  - Interpret events from GameEngineAgent and RulesAgent to produce play-by-play narrative.
+ - Use phrase libraries and context tags (late-game, equalizers, big chances) for varied commentary.
  - Maintain a buffer of recent commentary lines for display by UIAgent.
 * **Interactions:** Receives event notifications from GameEngineAgent and rule outcomes from RulesAgent; outputs commentary messages to UIAgent.
 

@@ -406,6 +406,18 @@ body {
   gap: 6px;
 }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.toggle-row input {
+  accent-color: var(--accent);
+}
+
 .tactics-label {
   font-size: 12px;
   text-transform: uppercase;
@@ -643,6 +655,67 @@ body {
 .commentary-time {
   font-weight: 700;
   color: #86efac;
+}
+
+.stats-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.stats-item {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.stats-item:last-child {
+  border-bottom: none;
+}
+
+.stats-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.stats-values {
+  display: grid;
+  grid-template-columns: 72px 1fr 72px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stats-values span {
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-bars {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+  height: 12px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.stats-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.stats-bar.home {
+  justify-self: start;
+}
+
+.stats-bar.away {
+  justify-self: end;
 }
 
 .stats-table {

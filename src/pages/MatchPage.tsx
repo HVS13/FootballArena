@@ -96,6 +96,50 @@ const MatchPage = () => {
   const initialSetupRef = useRef<TeamSetupState | null>(state.teamSetup);
   const initialEnvironmentRef = useRef(state.environment);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const tag = target.tagName;
+      if (target.isContentEditable || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') {
+        return;
+      }
+
+      const speedKeys: Record<string, number> = { '1': 2, '2': 4, '3': 8, '4': 16 };
+      if (speedKeys[event.key]) {
+        event.preventDefault();
+        dispatch({ type: 'SET_SPEED', speed: speedKeys[event.key] });
+        return;
+      }
+
+      if (event.key === ' ' || event.key.toLowerCase() === 'p') {
+        event.preventDefault();
+        dispatch({ type: 'SET_PAUSED', paused: !state.isPaused });
+        return;
+      }
+
+      if (event.key === '+' || event.key === '=') {
+        event.preventDefault();
+        const speeds = [2, 4, 8, 16];
+        const index = speeds.indexOf(state.simSpeed);
+        const next = speeds[Math.min(speeds.length - 1, index + 1)];
+        dispatch({ type: 'SET_SPEED', speed: next });
+        return;
+      }
+
+      if (event.key === '-') {
+        event.preventDefault();
+        const speeds = [2, 4, 8, 16];
+        const index = speeds.indexOf(state.simSpeed);
+        const next = speeds[Math.max(0, index - 1)];
+        dispatch({ type: 'SET_SPEED', speed: next });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dispatch, state.isPaused, state.simSpeed]);
+
   const rosterNameMap = useMemo(() => buildRosterNameMap(state.teamSetup), [state.teamSetup]);
 
   const teamList = useMemo<TeamState[]>(() => {
@@ -279,6 +323,150 @@ const MatchPage = () => {
   const homeGoals = homeTeam ? getStatValue(homeTeam.id, 'goals') : 0;
   const awayGoals = awayTeam ? getStatValue(awayTeam.id, 'goals') : 0;
 
+  const buildStatRows = () => {
+    if (!homeTeam || !awayTeam) return [];
+    const statValue = (teamId: string, field: keyof MatchStats['byTeam'][string]) =>
+      getStatValue(teamId, field);
+
+    const passAccuracyHome = Number(
+      formatRatio(statValue(homeTeam.id, 'passes'), statValue(homeTeam.id, 'passesAttempted')).replace('%', '')
+    );
+    const passAccuracyAway = Number(
+      formatRatio(statValue(awayTeam.id, 'passes'), statValue(awayTeam.id, 'passesAttempted')).replace('%', '')
+    );
+
+    return [
+      {
+        id: 'possession',
+        label: 'Possession',
+        home: getPossessionPercent(homeTeam.id),
+        away: getPossessionPercent(awayTeam.id),
+        format: formatPercent,
+        max: 100
+      },
+      {
+        id: 'passes',
+        label: 'Passes',
+        home: statValue(homeTeam.id, 'passes'),
+        away: statValue(awayTeam.id, 'passes'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'passAccuracy',
+        label: 'Pass Accuracy',
+        home: passAccuracyHome,
+        away: passAccuracyAway,
+        format: formatPercent,
+        max: 100
+      },
+      {
+        id: 'shots',
+        label: 'Shots',
+        home: statValue(homeTeam.id, 'shots'),
+        away: statValue(awayTeam.id, 'shots'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'shotsOnTarget',
+        label: 'Shots On Target',
+        home: statValue(homeTeam.id, 'shotsOnTarget'),
+        away: statValue(awayTeam.id, 'shotsOnTarget'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'shotsOffTarget',
+        label: 'Shots Off Target',
+        home: statValue(homeTeam.id, 'shotsOffTarget'),
+        away: statValue(awayTeam.id, 'shotsOffTarget'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'shotsBlocked',
+        label: 'Shots Blocked',
+        home: statValue(homeTeam.id, 'shotsBlocked'),
+        away: statValue(awayTeam.id, 'shotsBlocked'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'goals',
+        label: 'Goals',
+        home: statValue(homeTeam.id, 'goals'),
+        away: statValue(awayTeam.id, 'goals'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'xg',
+        label: 'xG',
+        home: statValue(homeTeam.id, 'xg'),
+        away: statValue(awayTeam.id, 'xg'),
+        format: (value: number) => value.toFixed(2)
+      },
+      {
+        id: 'yellowCards',
+        label: 'Yellow Cards',
+        home: statValue(homeTeam.id, 'yellowCards'),
+        away: statValue(awayTeam.id, 'yellowCards'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'redCards',
+        label: 'Red Cards',
+        home: statValue(homeTeam.id, 'redCards'),
+        away: statValue(awayTeam.id, 'redCards'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'fouls',
+        label: 'Fouls',
+        home: statValue(homeTeam.id, 'fouls'),
+        away: statValue(awayTeam.id, 'fouls'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'corners',
+        label: 'Corners',
+        home: statValue(homeTeam.id, 'corners'),
+        away: statValue(awayTeam.id, 'corners'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'offsides',
+        label: 'Offsides',
+        home: statValue(homeTeam.id, 'offsides'),
+        away: statValue(awayTeam.id, 'offsides'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'tackles',
+        label: 'Tackles Won',
+        home: statValue(homeTeam.id, 'tacklesWon'),
+        away: statValue(awayTeam.id, 'tacklesWon'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'interceptions',
+        label: 'Interceptions',
+        home: statValue(homeTeam.id, 'interceptions'),
+        away: statValue(awayTeam.id, 'interceptions'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'saves',
+        label: 'Saves',
+        home: statValue(homeTeam.id, 'saves'),
+        away: statValue(awayTeam.id, 'saves'),
+        format: (value: number) => value.toString()
+      },
+      {
+        id: 'subs',
+        label: 'Subs',
+        home: statValue(homeTeam.id, 'substitutions'),
+        away: statValue(awayTeam.id, 'substitutions'),
+        format: (value: number) => value.toString()
+      }
+    ];
+  };
+
   return (
     <div className="page-grid">
       <section className="card">
@@ -289,11 +477,13 @@ const MatchPage = () => {
           </div>
         </div>
         <div className="controls-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>Match Time: {renderState ? formatClock(renderState.time) : '00:00'}</div>
-          <div>Speed: x{state.simSpeed}</div>
+          <div role="status" aria-live="polite">
+            Match Time: {renderState ? formatClock(renderState.time) : '00:00'}
+          </div>
+          <div aria-live="polite">Speed: x{state.simSpeed}</div>
         </div>
         {restartInfo && (
-          <div className="restart-banner">
+          <div className="restart-banner" role="status" aria-live="assertive">
             <strong>{formatRestartLabel(restartInfo.type)}</strong> for {restartInfo.teamName} 
             {restartInfo.remaining.toFixed(1)}s
           </div>
@@ -344,6 +534,9 @@ const MatchPage = () => {
               key={speed}
               className={state.simSpeed === speed ? 'button' : 'button secondary'}
               onClick={() => dispatch({ type: 'SET_SPEED', speed })}
+              aria-label={`Set speed to ${speed}x`}
+              aria-pressed={state.simSpeed === speed}
+              aria-keyshortcuts={String([2, 4, 8, 16].indexOf(speed) + 1)}
             >
               x{speed}
             </button>
@@ -351,6 +544,9 @@ const MatchPage = () => {
           <button
             className="button"
             onClick={() => dispatch({ type: 'SET_PAUSED', paused: !state.isPaused })}
+            aria-label={state.isPaused ? 'Resume match' : 'Pause match'}
+            aria-pressed={state.isPaused}
+            aria-keyshortcuts="Space P"
           >
             {state.isPaused ? 'Resume' : 'Pause'}
           </button>
@@ -389,6 +585,7 @@ const MatchPage = () => {
                           className="select"
                           value={selection.offId}
                           onChange={(event) => handleSubSelection(team.id, 'offId', event.target.value)}
+                          aria-label={`Sub off player for ${team.name}`}
                         >
                           <option value="">Select player</option>
                           {lineupIds.map((playerId) => (
@@ -406,6 +603,7 @@ const MatchPage = () => {
                           className="select"
                           value={selection.onId}
                           onChange={(event) => handleSubSelection(team.id, 'onId', event.target.value)}
+                          aria-label={`Sub on player for ${team.name}`}
                         >
                           <option value="">Select player</option>
                           {benchIds.map((playerId) => (
@@ -432,7 +630,7 @@ const MatchPage = () => {
         <h3>Commentary</h3>
         {commentary.length === 0 && <p>Commentary feed will appear as the match unfolds.</p>}
         {commentary.length > 0 && (
-          <ul className="commentary-list">
+          <ul className="commentary-list" aria-live="polite" aria-relevant="additions text">
             {commentary.slice(0, 12).map((line) => (
               <li key={line.id}>
                 <span className="commentary-time">{formatClock(line.timeSeconds)}</span>
@@ -447,112 +645,33 @@ const MatchPage = () => {
         <h3>Match Stats</h3>
         {!matchStats && <p>Live stats panel will appear here.</p>}
         {matchStats && homeTeam && awayTeam && (
-          <div className="stats-table">
-            <div className="stats-row stats-header">
-              <span>Stat</span>
-              <span>{homeTeam.name}</span>
-              <span>{awayTeam.name}</span>
-            </div>
-            <div className="stats-row">
-              <span>Possession</span>
-              <span>{formatPercent(getPossessionPercent(homeTeam.id))}</span>
-              <span>{formatPercent(getPossessionPercent(awayTeam.id))}</span>
-            </div>
-            <div className="stats-row">
-              <span>Passes</span>
-              <span>{getStatValue(homeTeam.id, 'passes')}</span>
-              <span>{getStatValue(awayTeam.id, 'passes')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Pass Accuracy</span>
-              <span>
-                {formatRatio(
-                  getStatValue(homeTeam.id, 'passes'),
-                  getStatValue(homeTeam.id, 'passesAttempted')
-                )}
-              </span>
-              <span>
-                {formatRatio(
-                  getStatValue(awayTeam.id, 'passes'),
-                  getStatValue(awayTeam.id, 'passesAttempted')
-                )}
-              </span>
-            </div>
-            <div className="stats-row">
-              <span>Shots</span>
-              <span>{getStatValue(homeTeam.id, 'shots')}</span>
-              <span>{getStatValue(awayTeam.id, 'shots')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Shots On Target</span>
-              <span>{getStatValue(homeTeam.id, 'shotsOnTarget')}</span>
-              <span>{getStatValue(awayTeam.id, 'shotsOnTarget')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Shots Off Target</span>
-              <span>{getStatValue(homeTeam.id, 'shotsOffTarget')}</span>
-              <span>{getStatValue(awayTeam.id, 'shotsOffTarget')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Shots Blocked</span>
-              <span>{getStatValue(homeTeam.id, 'shotsBlocked')}</span>
-              <span>{getStatValue(awayTeam.id, 'shotsBlocked')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Goals</span>
-              <span>{getStatValue(homeTeam.id, 'goals')}</span>
-              <span>{getStatValue(awayTeam.id, 'goals')}</span>
-            </div>
-            <div className="stats-row">
-              <span>xG</span>
-              <span>{getStatValue(homeTeam.id, 'xg').toFixed(2)}</span>
-              <span>{getStatValue(awayTeam.id, 'xg').toFixed(2)}</span>
-            </div>
-            <div className="stats-row">
-              <span>Yellow Cards</span>
-              <span>{getStatValue(homeTeam.id, 'yellowCards')}</span>
-              <span>{getStatValue(awayTeam.id, 'yellowCards')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Red Cards</span>
-              <span>{getStatValue(homeTeam.id, 'redCards')}</span>
-              <span>{getStatValue(awayTeam.id, 'redCards')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Fouls</span>
-              <span>{getStatValue(homeTeam.id, 'fouls')}</span>
-              <span>{getStatValue(awayTeam.id, 'fouls')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Corners</span>
-              <span>{getStatValue(homeTeam.id, 'corners')}</span>
-              <span>{getStatValue(awayTeam.id, 'corners')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Offsides</span>
-              <span>{getStatValue(homeTeam.id, 'offsides')}</span>
-              <span>{getStatValue(awayTeam.id, 'offsides')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Tackles Won</span>
-              <span>{getStatValue(homeTeam.id, 'tacklesWon')}</span>
-              <span>{getStatValue(awayTeam.id, 'tacklesWon')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Interceptions</span>
-              <span>{getStatValue(homeTeam.id, 'interceptions')}</span>
-              <span>{getStatValue(awayTeam.id, 'interceptions')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Saves</span>
-              <span>{getStatValue(homeTeam.id, 'saves')}</span>
-              <span>{getStatValue(awayTeam.id, 'saves')}</span>
-            </div>
-            <div className="stats-row">
-              <span>Subs</span>
-              <span>{getStatValue(homeTeam.id, 'substitutions')}</span>
-              <span>{getStatValue(awayTeam.id, 'substitutions')}</span>
-            </div>
+          <div className="stats-grid">
+            {buildStatRows().map((row) => {
+              const max = row.max ?? Math.max(row.home, row.away, 1);
+              const homeWidth = Math.min(100, (row.home / max) * 100);
+              const awayWidth = Math.min(100, (row.away / max) * 100);
+              return (
+                <div key={row.id} className="stats-item">
+                  <div className="stats-label">{row.label}</div>
+                  <div className="stats-values">
+                    <span>{row.format(row.home)}</span>
+                    <div className="stats-bars" role="group" aria-label={`${row.label} comparison`}>
+                      <div
+                        className="stats-bar home"
+                        style={{ width: `${homeWidth}%`, background: homeTeam.primaryColor }}
+                        aria-label={`${homeTeam.name} ${row.format(row.home)}`}
+                      />
+                      <div
+                        className="stats-bar away"
+                        style={{ width: `${awayWidth}%`, background: awayTeam.primaryColor }}
+                        aria-label={`${awayTeam.name} ${row.format(row.away)}`}
+                      />
+                    </div>
+                    <span>{row.format(row.away)}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

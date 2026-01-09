@@ -66,6 +66,12 @@ const playstyleMultiplier = (player: PlayerState, id: string, standard: number, 
   return 1;
 };
 
+const playstyleBonus = (player: PlayerState, id: string, standard: number, plus: number) => {
+  if (player.playstylesPlus?.includes(id)) return plus;
+  if (player.playstyles?.includes(id)) return standard;
+  return 0;
+};
+
 const getFootBalance = (player: PlayerState) => {
   const left = player.leftFoot ?? 50;
   const right = player.rightFoot ?? 50;
@@ -129,17 +135,22 @@ export class RulesAgent {
       passWeight *= 0.95;
     }
 
-    if (hasPlaystyle(player, 'tiki_taka')) passWeight *= 1.08;
-    if (hasPlaystyle(player, 'incisive_pass')) passWeight *= 1.05;
-    if (hasPlaystyle(player, 'pinged_pass')) passWeight *= 1.05;
-    if (hasPlaystyle(player, 'long_ball_pass')) passWeight *= 1.04;
-    if (hasPlaystyle(player, 'whipped_pass')) passWeight *= 1.04;
-    if (hasPlaystyle(player, 'inventive')) passWeight *= 1.04;
+    passWeight *= playstyleMultiplier(player, 'tiki_taka', 1.08, 1.12);
+    passWeight *= playstyleMultiplier(player, 'incisive_pass', 1.05, 1.09);
+    passWeight *= playstyleMultiplier(player, 'pinged_pass', 1.05, 1.08);
+    passWeight *= playstyleMultiplier(player, 'long_ball_pass', 1.04, 1.07);
+    passWeight *= playstyleMultiplier(player, 'whipped_pass', 1.04, 1.08);
+    passWeight *= playstyleMultiplier(player, 'inventive', 1.04, 1.08);
+    passWeight *= playstyleMultiplier(player, 'flair', 1.02, 1.05);
+    passWeight *= playstyleMultiplier(player, 'gamechanger', 1.02, 1.06);
 
-    if (hasPlaystyle(player, 'power_shot')) shotWeight *= 1.06;
-    if (hasPlaystyle(player, 'finesse_shot')) shotWeight *= 1.06;
-    if (hasPlaystyle(player, 'chip_shot')) shotWeight *= 1.04;
-    if (hasPlaystyle(player, 'precision_header')) shotWeight *= 1.04;
+    shotWeight *= playstyleMultiplier(player, 'power_shot', 1.06, 1.1);
+    shotWeight *= playstyleMultiplier(player, 'finesse_shot', 1.06, 1.1);
+    shotWeight *= playstyleMultiplier(player, 'chip_shot', 1.04, 1.08);
+    shotWeight *= playstyleMultiplier(player, 'precision_header', 1.04, 1.08);
+    shotWeight *= playstyleMultiplier(player, 'trivela', 1.03, 1.07);
+    shotWeight *= playstyleMultiplier(player, 'acrobatic', 1.03, 1.06);
+    shotWeight *= playstyleMultiplier(player, 'gamechanger', 1.05, 1.1);
 
     const totalWeight = passWeight + shotWeight;
     const roll = Math.random() * totalWeight;
@@ -217,6 +228,10 @@ export class RulesAgent {
       getAttribute(passer, 'decisions')
     );
     let passChance = 0.6 + (passSkill / 100) * 0.35;
+    const defendingTeamId = this.getOpponentTeamId(state, teamId);
+    const isCross = receiver
+      ? this.isAerialPass(passer, receiver, defendingTeamId, instructions)
+      : false;
     const pressure = this.getPressure(state, passer);
     const composure = getAttribute(passer, 'composure');
     const consistency = getAttribute(passer, 'consistency');
@@ -235,6 +250,18 @@ export class RulesAgent {
     passChance *= playstyleMultiplier(passer, 'incisive_pass', 1.04, 1.08);
     passChance *= playstyleMultiplier(passer, 'pinged_pass', 1.04, 1.08);
     passChance *= playstyleMultiplier(passer, 'long_ball_pass', 1.03, 1.06);
+    passChance *= playstyleMultiplier(passer, 'inventive', 1.02, 1.05);
+    passChance *= playstyleMultiplier(passer, 'flair', 1.01, 1.03);
+    passChance *= playstyleMultiplier(passer, 'gamechanger', 1.02, 1.05);
+    if (isCross) {
+      passChance *= playstyleMultiplier(passer, 'whipped_pass', 1.05, 1.1);
+    }
+    if (context?.setPiece === 'corner' || context?.setPiece === 'free_kick') {
+      passChance *= playstyleMultiplier(passer, 'dead_ball', 1.06, 1.12);
+    }
+    if (this.isGoalkeeperRole(passer)) {
+      passChance *= playstyleMultiplier(passer, 'footwork', 1.03, 1.06);
+    }
 
     if (context?.passLeadPosition) {
       passChance *= 0.92;
@@ -257,7 +284,7 @@ export class RulesAgent {
       success && receiver
         ? this.applyTargetScatter(
             leadTarget ?? receiver.position,
-            this.getPassScatter(passer, receiver, instructions, passChance),
+            this.getPassScatter(passer, receiver, instructions, passChance, isCross, context),
             7
           )
         : target;
@@ -399,9 +426,20 @@ export class RulesAgent {
     goalChance *= playstyleMultiplier(shooter, 'finesse_shot', 1.08, 1.15);
     goalChance *= playstyleMultiplier(shooter, 'chip_shot', 1.04, 1.08);
     goalChance *= playstyleMultiplier(shooter, 'precision_header', 1.05, 1.1);
+    goalChance *= playstyleMultiplier(shooter, 'trivela', 1.03, 1.07);
+    goalChance *= playstyleMultiplier(shooter, 'acrobatic', 1.03, 1.06);
+    goalChance *= playstyleMultiplier(shooter, 'gamechanger', 1.05, 1.1);
+    if (distance <= 12) {
+      goalChance *= playstyleMultiplier(shooter, 'aerial', 1.02, 1.05);
+      goalChance *= playstyleMultiplier(shooter, 'power_header', 1.03, 1.06);
+      goalChance *= playstyleMultiplier(shooter, 'aerial_fortress', 1.04, 1.08);
+    }
     if (hasTrait(shooter, 'places_shots')) goalChance *= 1.05;
     if (hasTrait(shooter, 'shoots_with_power')) goalChance *= 1.04;
     if (hasTrait(shooter, 'curls_ball')) goalChance *= 1.03;
+    if (hasTrait(shooter, 'attempts_overhead_kicks') && distance <= 10) goalChance *= 1.03;
+    if (hasTrait(shooter, 'likes_to_lob_keeper') && distance <= 14) goalChance *= 1.04;
+    if (hasTrait(shooter, 'likes_to_round_keeper') && distance <= 12) goalChance *= 1.03;
 
     const pressure = this.getPressure(state, shooter);
     const composure = getAttribute(shooter, 'composure');
@@ -418,9 +456,20 @@ export class RulesAgent {
     goalChance *= 1 - fatigue * 0.3;
 
     let onTargetChance = clamp(0.4 + (shotSkill / 100) * 0.45, 0.4, 0.85) * (1 - pressurePenalty * 0.5);
+    onTargetChance *= playstyleMultiplier(shooter, 'finesse_shot', 1.03, 1.06);
+    onTargetChance *= playstyleMultiplier(shooter, 'trivela', 1.02, 1.05);
+    onTargetChance *= playstyleMultiplier(shooter, 'acrobatic', 1.02, 1.04);
+    onTargetChance *= playstyleMultiplier(shooter, 'gamechanger', 1.03, 1.06);
+    if (distance <= 12) {
+      onTargetChance *= playstyleMultiplier(shooter, 'precision_header', 1.02, 1.05);
+      onTargetChance *= playstyleMultiplier(shooter, 'aerial', 1.01, 1.03);
+    }
     if (hasTrait(shooter, 'places_shots')) onTargetChance *= 1.05;
     if (hasTrait(shooter, 'shoots_with_power')) onTargetChance *= 0.97;
     if (hasTrait(shooter, 'curls_ball')) onTargetChance *= 1.02;
+    if (hasTrait(shooter, 'attempts_overhead_kicks') && distance <= 10) onTargetChance *= 0.98;
+    if (hasTrait(shooter, 'likes_to_lob_keeper') && distance <= 14) onTargetChance *= 0.98;
+    if (hasTrait(shooter, 'likes_to_round_keeper') && distance <= 12) onTargetChance *= 0.98;
     onTargetChance *= 0.9 + (consistency / 100) * 0.2;
     onTargetChance *= moraleFactor;
     onTargetChance *= 1 - fatigue * 0.25;
@@ -429,6 +478,12 @@ export class RulesAgent {
       const freeKick = getAttribute(shooter, 'free_kick_taking');
       onTargetChance *= 0.95 + (freeKick / 100) * 0.12;
       goalChance *= 0.9 + (freeKick / 100) * 0.18;
+      onTargetChance *= playstyleMultiplier(shooter, 'dead_ball', 1.06, 1.12);
+      goalChance *= playstyleMultiplier(shooter, 'dead_ball', 1.08, 1.16);
+      if (hasTrait(shooter, 'hits_free_kicks_with_power')) {
+        goalChance *= 1.05;
+        onTargetChance *= 0.98;
+      }
     }
     if (context?.setPiece === 'penalty') {
       const penalty = getAttribute(shooter, 'penalty_taking');
@@ -439,7 +494,7 @@ export class RulesAgent {
     const roll = Math.random();
     const shotTarget = this.applyTargetScatter(
       goal,
-      this.getShotScatter(shooter, distanceFactor),
+      this.getShotScatter(shooter, distanceFactor, context),
       5.5
     );
     const ballVelocity = this.buildBallVelocity(state.ball.position, shotTarget, 14 + (shotSkill / 100) * 10);
@@ -483,7 +538,13 @@ export class RulesAgent {
     if (roll < onTargetChance) {
       const defendingTeamId = this.getOpponentTeamId(state, teamId);
       const goalkeeper = this.getGoalkeeper(state, defendingTeamId);
-      const shotPower = this.getShotPower(shooter);
+      let shotPower = this.getShotPower(shooter, context);
+      if (hasTrait(shooter, 'likes_to_lob_keeper') && distance <= 14) {
+        shotPower *= 0.92;
+      }
+      if (hasTrait(shooter, 'likes_to_round_keeper') && distance <= 12) {
+        shotPower *= 0.95;
+      }
 
       if (goalkeeper) {
         const gkOutcome = this.resolveGoalkeeperOutcome(goalkeeper, shooter, distanceFactor, shotPower);
@@ -690,6 +751,10 @@ export class RulesAgent {
 
     if (inBox) redChance += 0.05;
     if (this.isLastMan(state, offender, position, attackingTeamId)) redChance += 0.12;
+    if (hasTrait(offender, 'argues_with_officials')) {
+      yellowChance += 0.08;
+      redChance += 0.02;
+    }
 
     redChance = clamp(redChance, 0, 0.45);
     yellowChance = clamp(yellowChance, 0.1, 0.85);
@@ -811,7 +876,9 @@ export class RulesAgent {
       const timing = clamp(1 - Math.abs(0.5 - t) * 2, 0, 1);
       let multiplier = 0.6 + (interceptSkill / 100) * 0.6;
 
-      if (hasPlaystyle(opponent, 'intercept')) multiplier *= 1.08;
+      multiplier *= playstyleMultiplier(opponent, 'intercept', 1.08, 1.12);
+      multiplier *= playstyleMultiplier(opponent, 'anticipate', 1.05, 1.08);
+      multiplier *= playstyleMultiplier(opponent, 'jockey', 1.04, 1.07);
       if (hasTrait(opponent, 'marks_opponent_tightly')) multiplier *= 1.06;
       if (hasTrait(opponent, 'dives_into_tackles')) multiplier *= 1.04;
       if (hasTrait(opponent, 'does_not_dive_into_tackles')) multiplier *= 0.95;
@@ -889,8 +956,8 @@ export class RulesAgent {
       const handling = getAttribute(player, 'handling');
       const jumping = getAttribute(player, 'jumping_reach');
       let skill = average(aerial, command, handling, jumping);
-      if (hasPlaystyle(player, 'cross_claimer')) skill *= 1.08;
-      if (hasPlaystyle(player, 'far_reach')) skill *= 1.05;
+      skill *= playstyleMultiplier(player, 'cross_claimer', 1.08, 1.12);
+      skill *= playstyleMultiplier(player, 'far_reach', 1.05, 1.08);
       return clamp(skill, 5, 140);
     }
 
@@ -904,8 +971,10 @@ export class RulesAgent {
     let skill = average(jumping, heading, strength, bravery, aggression);
     skill *= 1 + heightBoost;
 
-    if (hasPlaystyle(player, 'aerial')) skill *= 1.08;
-    if (hasPlaystyle(player, 'power_header')) skill *= 1.08;
+    skill *= playstyleMultiplier(player, 'aerial', 1.08, 1.12);
+    skill *= playstyleMultiplier(player, 'power_header', 1.08, 1.12);
+    skill *= playstyleMultiplier(player, 'precision_header', 1.05, 1.08);
+    skill *= playstyleMultiplier(player, 'aerial_fortress', 1.12, 1.18);
     if (hasTrait(player, 'penalty_box_player')) skill *= 1.05;
 
     return clamp(skill, 5, 140);
@@ -960,6 +1029,18 @@ export class RulesAgent {
     if (hasPlaystyle(receiver, 'first_touch')) {
       chance *= receiver.playstylesPlus?.includes('first_touch') ? 0.6 : 0.75;
     }
+    if (hasPlaystyle(receiver, 'press_proven')) {
+      chance *= receiver.playstylesPlus?.includes('press_proven') ? 0.82 : 0.9;
+    }
+    if (hasPlaystyle(receiver, 'technical')) {
+      chance *= receiver.playstylesPlus?.includes('technical') ? 0.85 : 0.92;
+    }
+    if (hasPlaystyle(receiver, 'flair')) {
+      chance *= receiver.playstylesPlus?.includes('flair') ? 0.9 : 0.94;
+    }
+    if (hasPlaystyle(receiver, 'gamechanger')) {
+      chance *= receiver.playstylesPlus?.includes('gamechanger') ? 0.88 : 0.93;
+    }
 
     return clamp(chance, 0.02, 0.22);
   }
@@ -968,7 +1049,9 @@ export class RulesAgent {
     passer: PlayerState,
     receiver: PlayerState,
     instructions: TeamInstructions | undefined,
-    passChance: number
+    passChance: number,
+    isCross: boolean,
+    context?: DecisionContext
   ) {
     const passing = getAttribute(passer, 'passing');
     const vision = getAttribute(passer, 'vision');
@@ -991,12 +1074,27 @@ export class RulesAgent {
     if (instructions?.passing_directness === 'Much Shorter') error -= 0.02;
     if (instructions?.passing_directness === 'Much More Direct') error += 0.03;
 
-    if (hasPlaystyle(passer, 'tiki_taka')) error *= 0.85;
-    if (hasPlaystyle(passer, 'incisive_pass')) error *= 0.9;
-    if (hasPlaystyle(passer, 'pinged_pass')) error *= 0.92;
-    if (hasPlaystyle(passer, 'long_ball_pass')) error *= 0.95;
+    error *= playstyleMultiplier(passer, 'tiki_taka', 0.85, 0.8);
+    error *= playstyleMultiplier(passer, 'incisive_pass', 0.9, 0.86);
+    error *= playstyleMultiplier(passer, 'pinged_pass', 0.92, 0.88);
+    error *= playstyleMultiplier(passer, 'long_ball_pass', 0.95, 0.9);
+    error *= playstyleMultiplier(passer, 'inventive', 0.95, 0.9);
+    error *= playstyleMultiplier(passer, 'flair', 0.95, 0.9);
+    error *= playstyleMultiplier(passer, 'gamechanger', 0.94, 0.88);
     if (hasTrait(passer, 'plays_short_simple_passes')) error *= 0.85;
     if (hasTrait(passer, 'tries_long_range_passes')) error *= 1.12;
+
+    if (isCross) {
+      error *= playstyleMultiplier(passer, 'whipped_pass', 0.88, 0.8);
+    }
+    if (context?.setPiece === 'corner' || context?.setPiece === 'free_kick') {
+      error *= playstyleMultiplier(passer, 'dead_ball', 0.85, 0.78);
+    }
+
+    const diagonal = Math.abs(receiver.position.y - passer.position.y) > 16 && distance > 20;
+    if (diagonal) {
+      error *= playstyleMultiplier(passer, 'trivela', 0.93, 0.88);
+    }
 
     const distanceScale = clamp(distance / 26, 0.7, 1.35);
     error *= distanceScale;
@@ -1004,7 +1102,7 @@ export class RulesAgent {
     return clamp(error, 0.015, 0.25);
   }
 
-  private getShotScatter(shooter: PlayerState, distanceFactor: number) {
+  private getShotScatter(shooter: PlayerState, distanceFactor: number, context?: DecisionContext) {
     const finishing = getAttribute(shooter, 'finishing');
     const technique = getAttribute(shooter, 'technique');
     const composure = getAttribute(shooter, 'composure');
@@ -1016,10 +1114,17 @@ export class RulesAgent {
     error += this.getWeatherAccuracyPenalty();
     error += this.getWindAccuracyPenalty(22);
 
-    if (hasPlaystyle(shooter, 'finesse_shot')) error *= 0.9;
-    if (hasPlaystyle(shooter, 'power_shot')) error *= 0.95;
+    error *= playstyleMultiplier(shooter, 'finesse_shot', 0.9, 0.86);
+    error *= playstyleMultiplier(shooter, 'power_shot', 0.95, 0.9);
+    error *= playstyleMultiplier(shooter, 'trivela', 0.94, 0.88);
+    error *= playstyleMultiplier(shooter, 'acrobatic', 0.96, 0.92);
+    error *= playstyleMultiplier(shooter, 'flair', 0.96, 0.92);
+    error *= playstyleMultiplier(shooter, 'gamechanger', 0.94, 0.88);
     if (hasTrait(shooter, 'curls_ball')) error *= 0.9;
     if (hasTrait(shooter, 'shoots_with_power')) error *= 1.05;
+    if (context?.setPiece === 'free_kick') {
+      error *= playstyleMultiplier(shooter, 'dead_ball', 0.88, 0.8);
+    }
 
     return clamp(error, 0.02, 0.2);
   }
@@ -1054,13 +1159,17 @@ export class RulesAgent {
     };
   }
 
-  private getShotPower(shooter: PlayerState) {
+  private getShotPower(shooter: PlayerState, context?: DecisionContext) {
     let power = 0.5;
-    if (hasPlaystyle(shooter, 'power_shot')) power += 0.15;
-    if (hasPlaystyle(shooter, 'finesse_shot')) power -= 0.05;
-    if (hasPlaystyle(shooter, 'chip_shot')) power -= 0.08;
+    power += playstyleBonus(shooter, 'power_shot', 0.15, 0.2);
+    power += playstyleBonus(shooter, 'finesse_shot', -0.05, -0.08);
+    power += playstyleBonus(shooter, 'chip_shot', -0.08, -0.12);
+    power += playstyleBonus(shooter, 'gamechanger', 0.04, 0.06);
     if (hasTrait(shooter, 'shoots_with_power')) power += 0.08;
     if (hasTrait(shooter, 'places_shots')) power -= 0.05;
+    if (context?.setPiece === 'free_kick' && hasTrait(shooter, 'hits_free_kicks_with_power')) {
+      power += 0.08;
+    }
     return clamp(power, 0.3, 0.85);
   }
 
@@ -1087,10 +1196,13 @@ export class RulesAgent {
     saveChance *= this.getMoraleFactor(goalkeeper);
     saveChance *= 1 - (goalkeeper.fatigue ?? 0) * 0.25;
 
-    if (hasPlaystyle(goalkeeper, 'quick_reflexes')) saveChance *= 1.08;
-    if (hasPlaystyle(goalkeeper, 'far_reach')) saveChance *= 1.06;
-    if (hasPlaystyle(goalkeeper, 'rush_out')) saveChance *= 1.03;
-    if (hasPlaystyle(shooter, 'power_shot')) saveChance *= 0.94;
+    saveChance *= playstyleMultiplier(goalkeeper, 'quick_reflexes', 1.08, 1.12);
+    saveChance *= playstyleMultiplier(goalkeeper, 'far_reach', 1.06, 1.1);
+    saveChance *= playstyleMultiplier(goalkeeper, 'rush_out', 1.03, 1.06);
+    if (distanceFactor > 0.55) {
+      saveChance *= playstyleMultiplier(goalkeeper, 'footwork', 1.03, 1.06);
+    }
+    saveChance *= playstyleMultiplier(shooter, 'power_shot', 0.94, 0.9);
 
     saveChance = clamp(saveChance, 0.18, 0.9);
     if (Math.random() > saveChance) {
@@ -1122,7 +1234,7 @@ export class RulesAgent {
       );
       const closeness = clamp(1 - distance / 4.2, 0, 1);
       let chance = 0.06 + closeness * 0.18 + (blockSkill - 50) / 300;
-      if (hasPlaystyle(opponent, 'block')) chance *= 1.1;
+      chance *= playstyleMultiplier(opponent, 'block', 1.1, 1.16);
       if (hasTrait(opponent, 'dives_into_tackles')) chance *= 1.05;
       chance = clamp(chance, 0.04, 0.35);
       if (!best || chance > best.chance) {

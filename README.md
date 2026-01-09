@@ -26,6 +26,8 @@ Key features include:
 * **Match HUD overlays:** On-pitch overlays summarize fatigue, morale, injuries, and discipline per team.
 * **Expanded match stats:** Pass accuracy, shots on/off target, xG, corners, offsides, tackles, interceptions, and saves.
 * **Set-piece wizard:** A six-question setup to shape marking, delivery targets, and numbers committed.
+* **Contextual commentary:** Phrase libraries with late-game intensity cues and varied play-by-play lines.
+* **AI control + assist tactics:** Teams can be AI-controlled, and human teams can enable AI tactical assistance.
 
 ## v0.1 Scope and Acceptance Criteria
 
@@ -52,6 +54,7 @@ Key features include:
 - FM-style tactics board layout with formation pitch, lineup table, and instruction cards.
 - Dual shape previews (in/out of possession) with player numbers/names shown on tokens.
 - Per-team formation selection in Team Setup.
+- Optional AI control for teams plus AI tactical assistance toggles for human teams.
 
 **Out of scope (v0.1):**
 - Online multiplayer and matchmaking.

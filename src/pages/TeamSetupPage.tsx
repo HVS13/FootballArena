@@ -149,6 +149,8 @@ const buildTeamSetup = (
     formationId: formation.id,
     primaryColor: kit.primary,
     secondaryColor: kit.secondary,
+    controlType: 'human',
+    assistTactics: false,
     roster,
     slots,
     bench,
@@ -172,6 +174,12 @@ const canStartMatch = (setup: TeamSetupState | null) => {
 };
 
 const roleGroups = Object.entries(referenceData.roles);
+const roleDescriptionMap = new Map(
+  Object.values(referenceData.roles)
+    .flat()
+    .map((role) => [role.id, role.description])
+);
+const dutyDescriptionMap = new Map(referenceData.duties.map((duty) => [duty.id, duty.description]));
 const roleGroupBySlot: Record<string, keyof typeof referenceData.roles> = {
   gk: 'goalkeeper',
   lb: 'full_back',
@@ -227,6 +235,11 @@ const getDutyOptionsForSlot = (slotId: string) => {
   const group = roleGroupBySlot[slotId];
   return group ? dutyOptionsByGroup[group] ?? [] : referenceData.duties.map((duty) => duty.id);
 };
+
+const getRoleDescription = (roleId?: string | null) =>
+  roleId ? roleDescriptionMap.get(roleId) ?? '' : '';
+const getDutyDescription = (dutyId?: string | null) =>
+  dutyId ? dutyDescriptionMap.get(dutyId) ?? '' : '';
 
 const TeamSetupPage = () => {
   const navigate = useNavigate();
@@ -324,6 +337,21 @@ const TeamSetupPage = () => {
     setTeamSetup((prev) => ({
       ...prev,
       teams: prev.teams.map((team) => (team.id === teamId ? updater(team) : team))
+    }));
+  };
+
+  const updateControlType = (teamId: string, controlType: TeamSetup['controlType']) => {
+    updateTeam(teamId, (team) => ({
+      ...team,
+      controlType,
+      assistTactics: controlType === 'human' ? team.assistTactics : false
+    }));
+  };
+
+  const updateAssistTactics = (teamId: string, assistTactics: boolean) => {
+    updateTeam(teamId, (team) => ({
+      ...team,
+      assistTactics
     }));
   };
 
@@ -779,8 +807,9 @@ const TeamSetupPage = () => {
               <span className="tactics-label">Formation</span>
               <select
                 className="select"
-              value={selectedTeam.formationId}
+                value={selectedTeam.formationId}
                 onChange={(event) => applyFormation(event.target.value)}
+                aria-label={`Formation for ${selectedTeam.name}`}
               >
                 {FORMATIONS.map((formation) => (
                   <option key={formation.id} value={formation.id}>
@@ -789,6 +818,32 @@ const TeamSetupPage = () => {
                 ))}
               </select>
             </div>
+            <div className="tactics-control">
+              <span className="tactics-label">Control</span>
+              <select
+                className="select"
+                value={selectedTeam.controlType}
+                onChange={(event) => updateControlType(selectedTeam.id, event.target.value as TeamSetup['controlType'])}
+                aria-label={`Control type for ${selectedTeam.name}`}
+              >
+                <option value="human">Human</option>
+                <option value="ai">AI</option>
+              </select>
+            </div>
+            {selectedTeam.controlType === 'human' && (
+              <div className="tactics-control">
+                <span className="tactics-label">Assist AI Tactics</span>
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={selectedTeam.assistTactics}
+                    onChange={(event) => updateAssistTactics(selectedTeam.id, event.target.checked)}
+                    aria-label={`Assist AI tactics for ${selectedTeam.name}`}
+                  />
+                  <span>Enable</span>
+                </label>
+              </div>
+            )}
             <div className="tactics-control">
               <span className="tactics-label">Tactical Preset</span>
               <select
@@ -800,6 +855,7 @@ const TeamSetupPage = () => {
                     [selectedTeam.id]: event.target.value
                   }))
                 }
+                aria-label={`Tactical preset for ${selectedTeam.name}`}
               >
                 <option value="custom">Custom</option>
                 {TACTICAL_PRESETS.map((preset) => (
@@ -866,6 +922,7 @@ const TeamSetupPage = () => {
                     type="color"
                     value={selectedTeam.primaryColor}
                     onChange={(event) => updateTeamColors(event.target.value, selectedTeam.secondaryColor)}
+                    aria-label={`Primary kit color for ${selectedTeam.name}`}
                   />
                 </label>
                 <label className="kit-control">
@@ -874,6 +931,7 @@ const TeamSetupPage = () => {
                     type="color"
                     value={selectedTeam.secondaryColor}
                     onChange={(event) => updateTeamColors(selectedTeam.primaryColor, event.target.value)}
+                    aria-label={`Secondary kit color for ${selectedTeam.name}`}
                   />
                 </label>
               </div>
@@ -909,12 +967,14 @@ const TeamSetupPage = () => {
               </div>
               <div className="instruction-grid">
                 {instructionGroups[instructionTab].map((instruction) => (
-                  <div key={instruction.id} className="instruction-card">
+                  <div key={instruction.id} className="instruction-card" title={instruction.description}>
                     <div className="instruction-title">{instruction.name}</div>
                     <select
                       className="select compact"
                       value={selectedTeam.instructions[instruction.id] ?? ''}
                       onChange={(event) => updateInstruction(instruction.id, event.target.value)}
+                      title={instruction.description}
+                      aria-label={`${instruction.name} instruction`}
                     >
                       {instruction.options?.map((option) => (
                         <option key={option} value={option}>
@@ -938,14 +998,18 @@ const TeamSetupPage = () => {
                 <span>Duty</span>
               </div>
               <div className="lineup-grid">
-                {selectedTeam.slots.map((slot) => (
-                  <div key={slot.id} className="lineup-row">
+                {selectedTeam.slots.map((slot) => {
+                  const roleDescription = getRoleDescription(slot.roleId);
+                  const dutyDescription = getDutyDescription(slot.dutyId);
+                  return (
+                    <div key={slot.id} className="lineup-row">
                     <div className="lineup-cell lineup-pos">{slot.label}</div>
                     <div className="lineup-cell">
                       <select
                         className="select compact"
                         value={slot.playerId ?? ''}
                         onChange={(event) => handleSlotPlayerChange(slot.id, event.target.value)}
+                        aria-label={`Player for ${slot.label}`}
                       >
                         <option value="">Select</option>
                         {selectedTeam.roster.map((player) => (
@@ -960,6 +1024,8 @@ const TeamSetupPage = () => {
                         className="select compact"
                         value={slot.roleId ?? ''}
                         onChange={(event) => handleSlotRoleChange(slot.id, event.target.value)}
+                        title={roleDescription || 'Select a role'}
+                        aria-label={`Role for ${slot.label}${roleDescription ? `: ${roleDescription}` : ''}`}
                       >
                         <option value="">Select</option>
                         {roleGroups.map(([groupKey, roles]) => (
@@ -978,6 +1044,8 @@ const TeamSetupPage = () => {
                         className="select compact"
                         value={slot.dutyId ?? ''}
                         onChange={(event) => handleSlotDutyChange(slot.id, event.target.value)}
+                        title={dutyDescription || 'Select a duty'}
+                        aria-label={`Duty for ${slot.label}${dutyDescription ? `: ${dutyDescription}` : ''}`}
                       >
                         <option value="">Select</option>
                         {referenceData.duties.map((duty) => (
@@ -988,7 +1056,8 @@ const TeamSetupPage = () => {
                       </select>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1030,6 +1099,8 @@ const TeamSetupPage = () => {
                 className="select"
                 value={(selectedTeam.setPieces as Record<string, string>)[question.id]}
                 onChange={(event) => updateSetPieceSetting(question.id, event.target.value)}
+                title={question.description}
+                aria-label={`${question.name} setting`}
               >
                 {question.options.map((option) => (
                   <option key={option.id} value={option.id}>

@@ -57,7 +57,7 @@ Implementing a realistic football simulation game demands a wide range of techni
 | **Decision Making** | Implement simple AI for computer-controlled teams in multiplayer or future single-player modes. This may involve heuristics or rule-based systems using player attributes and tactical instructions. |
 | **Possession Logic** | Model ball possession, action selection (carry, pass, shoot), and stoppage handling to keep the simulation coherent. |
 | **Spatial Evaluation** | Score passing options using distance, pressure, and tactical instructions to create realistic ball progression. |
-| **Commentary Generation** | Design templates for commentary that describe events accurately and engagingly. At this stage, simple rule-based phrases are sufficient, but the system should support richer language later. |
+| **Commentary Generation** | Design phrase libraries and rules that describe events accurately and engagingly, including late-game intensity cues and contextual variations. |
 
 ## Testing & Deployment
 

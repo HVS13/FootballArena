@@ -39,6 +39,8 @@ type RestartState = {
   takerId: string | null;
 };
 
+type SimPlayer = SimulationState['players'][number];
+
 type PlayerMeta = {
   name: string;
   shirtNo?: number;
@@ -83,12 +85,95 @@ export type RestartInfo = {
   position: Vector2;
 };
 
+type RoleArchetypeProfile = {
+  inPossession: {
+    axisShift: number;
+    widthBias: number;
+    roamBias: number;
+    runBias: number;
+    diagonalShift: number;
+    channelBias: number;
+    wanderBias: number;
+  };
+  outOfPossession: {
+    axisShift: number;
+    widthBias: number;
+    pressBias: number;
+    wanderBias: number;
+  };
+  decision: {
+    carryBias: number;
+    shootBias: number;
+    passDistanceBias: number;
+    riskBias: number;
+  };
+};
+
+type SetPieceAssignments = {
+  aerial: SimPlayer[];
+  box: SimPlayer[];
+  creators: SimPlayer[];
+  recovery: SimPlayer[];
+  remaining: SimPlayer[];
+};
+
+type SetPieceRoleScores = {
+  aerial: number;
+  box: number;
+  creator: number;
+  recovery: number;
+};
+
+type AdaptationWindow = {
+  passes: number;
+  longPasses: number;
+  crosses: number;
+  entriesLeft: number;
+  entriesRight: number;
+  entriesCentral: number;
+  shots: number;
+  shotsWide: number;
+  shotsCentral: number;
+};
+
+type AdaptationState = {
+  nextCheck: number;
+  window: AdaptationWindow;
+};
+
 const MAX_SUBS = 5;
 const MAX_WINDOWS = 3;
 const WINDOW_GRACE_SECONDS = 30;
 const CONTROL_DISTANCE = 2.2;
 const CONTROL_SPEED = 2.4;
+const ADAPTATION_INITIAL_DELAY = 300;
+const ADAPTATION_WINDOW_SECONDS = 240;
+const ADAPTATION_MIN_EVENTS = 12;
+const ADAPTATION_LANE_MARGIN = 0.15;
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const buildRoleArchetypeProfile = (): RoleArchetypeProfile => ({
+  inPossession: {
+    axisShift: 0,
+    widthBias: 0,
+    roamBias: 0,
+    runBias: 0,
+    diagonalShift: 0,
+    channelBias: 0,
+    wanderBias: 0
+  },
+  outOfPossession: {
+    axisShift: 0,
+    widthBias: 0,
+    pressBias: 0,
+    wanderBias: 0
+  },
+  decision: {
+    carryBias: 0,
+    shootBias: 0,
+    passDistanceBias: 0,
+    riskBias: 0
+  }
+});
 
 const cloneState = (state: SimulationState): SimulationState => ({
   time: state.time,
@@ -417,6 +502,7 @@ export class GameEngineAgent {
   private environment: EnvironmentState;
   private matchImportance: number;
   private halftimeRecovered = false;
+  private adaptationState: Record<string, AdaptationState>;
 
   constructor(config: EngineConfig = {}) {
     this.pitch = config.pitch ?? DEFAULT_PITCH;
@@ -444,6 +530,7 @@ export class GameEngineAgent {
     this.commentaryAgent = new CommentaryAgent();
     this.actionCooldown = 0;
     this.substitutionTrackers = buildSubstitutionTrackers(this.state, this.teamSetup);
+    this.adaptationState = this.buildAdaptationState();
     this.initializePlayerState();
   }
 
@@ -602,6 +689,7 @@ export class GameEngineAgent {
     this.updateFatigue(dt);
     this.updateMorale(dt);
     this.updateInjuries(dt);
+    this.updateOpponentAdaptation();
     if (this.restartState) {
       this.handleRestart(dt);
       return;
@@ -656,6 +744,7 @@ export class GameEngineAgent {
 
     this.state.players.forEach((player) => {
       const behavior = this.getRoleBehavior(player);
+      const roleProfile = this.getRoleArchetypeProfile(player);
       const instructions = this.getTeamInstructions(player.teamId);
       const direction = this.getAttackDirection(player.teamId);
       const base = player.homePosition;
@@ -716,6 +805,7 @@ export class GameEngineAgent {
       if (inPossession) {
         widthBias += this.getAttackingWidthBias(instructions?.attacking_width);
       }
+      widthBias += inPossession ? roleProfile.inPossession.widthBias : roleProfile.outOfPossession.widthBias;
 
       const attackShiftBase = lineDepth < 0.33 ? 5.5 : lineDepth < 0.66 ? 7.5 : 6;
       const defendShiftBase = lineDepth < 0.33 ? 5.2 : lineDepth < 0.66 ? 6.2 : 4.5;
@@ -736,11 +826,13 @@ export class GameEngineAgent {
         const lineScale = clamp(1.2 - lineDepth, 0.3, 1);
         anchorX += direction * defensiveLineOffset * lineScale;
       }
+      const axisShift = inPossession ? roleProfile.inPossession.axisShift : roleProfile.outOfPossession.axisShift;
+      anchorX += direction * axisShift;
 
       let anchorY = this.applyWidthBias(base.y, widthBias, midY);
 
       if (inPossession) {
-        const roamPull = clamp(behavior.roam, 0, 1);
+        const roamPull = clamp(behavior.roam + roleProfile.inPossession.roamBias, 0, 1);
         anchorX = lerp(anchorX, ball.x, 0.08 * roamPull);
         anchorY = lerp(anchorY, ball.y, 0.12 * roamPull);
 
@@ -762,12 +854,15 @@ export class GameEngineAgent {
           const decisions = this.getAttribute(player, 'decisions');
           const runSkill = clamp((offTheBall + anticipation + acceleration + decisions) / 400, 0, 1);
           let runBias = runSkill * 0.5 + behavior.advance * 0.45 + behavior.roam * 0.15;
+          runBias += roleProfile.inPossession.runBias;
 
           if (this.hasTrait(player, 'comes_deep_to_get_ball')) runBias -= 0.25;
           if (this.hasTrait(player, 'stays_back_at_all_times')) runBias -= 0.3;
           if (this.hasTrait(player, 'gets_forward_whenever_possible')) runBias += 0.2;
           if (this.hasTrait(player, 'gets_into_opposition_area')) runBias += 0.15;
-          if (this.hasTrait(player, 'tries_to_beat_offside_trap')) runBias += 0.18;
+          if (this.hasTrait(player, 'likes_to_try_to_beat_offside_trap')) runBias += 0.18;
+          if (this.hasTrait(player, 'arrives_late_in_opponents_area')) runBias += 0.12;
+          if (this.hasTrait(player, 'plays_with_back_to_goal')) runBias -= 0.1;
 
           if (instructions?.attacking_transition === 'Counter-Attack') runBias += 0.08;
           if (instructions?.attacking_transition === 'Patient Build-Up') runBias -= 0.08;
@@ -802,10 +897,35 @@ export class GameEngineAgent {
 
           anchorY += lateralShift;
         }
+
+        const channelBias = roleProfile.inPossession.channelBias;
+        if (channelBias > 0.01) {
+          const channelTarget = this.getChannelLaneY(base.y, midY);
+          anchorY = lerp(anchorY, channelTarget, clamp(channelBias, 0, 1));
+        }
+
+        const diagonalShift = roleProfile.inPossession.diagonalShift;
+        if (Math.abs(diagonalShift) > 0.01) {
+          const centerDir = base.y < midY ? 1 : -1;
+          const centerPull = clamp(Math.abs(base.y - midY) / midY, 0.2, 1);
+          anchorY += centerDir * diagonalShift * centerPull;
+        }
+
+        if (this.hasTrait(player, 'runs_with_ball_down_left')) {
+          anchorY = lerp(anchorY, midY - midY * 0.45, 0.12);
+        } else if (this.hasTrait(player, 'runs_with_ball_down_right')) {
+          anchorY = lerp(anchorY, midY + midY * 0.45, 0.12);
+        } else if (this.hasTrait(player, 'runs_with_ball_down_centre')) {
+          anchorY = lerp(anchorY, midY, 0.12);
+        }
       } else if (possessionTeamId) {
         const pressBias = this.getPressBias(instructions);
         const pressTrigger = shape?.pressTrigger ?? 1;
-        const pressPull = clamp((behavior.press + pressBias) * pressTrigger, 0, 1.1);
+        const pressPull = clamp(
+          (behavior.press + pressBias + roleProfile.outOfPossession.pressBias) * pressTrigger,
+          0,
+          1.1
+        );
         anchorX = lerp(anchorX, ball.x, 0.07 + pressPull * 0.15);
         anchorY = lerp(anchorY, ball.y, 0.06 + pressPull * 0.15);
 
@@ -844,6 +964,7 @@ export class GameEngineAgent {
       player.tacticalPosition = { x: anchorX, y: anchorY };
 
       let wander = 1 + behavior.roam * 0.7 - behavior.hold * 0.5;
+      wander += inPossession ? roleProfile.inPossession.wanderBias : roleProfile.outOfPossession.wanderBias;
       if (!inPossession && possessionTeamId) {
         wander -= 0.05;
       }
@@ -875,6 +996,31 @@ export class GameEngineAgent {
         player.discipline = { yellow: 0, red: false };
       }
     });
+  }
+
+  private buildAdaptationState() {
+    const state: Record<string, AdaptationState> = {};
+    this.state.teams.forEach((team) => {
+      state[team.id] = {
+        nextCheck: ADAPTATION_INITIAL_DELAY,
+        window: this.createAdaptationWindow()
+      };
+    });
+    return state;
+  }
+
+  private createAdaptationWindow(): AdaptationWindow {
+    return {
+      passes: 0,
+      longPasses: 0,
+      crosses: 0,
+      entriesLeft: 0,
+      entriesRight: 0,
+      entriesCentral: 0,
+      shots: 0,
+      shotsWide: 0,
+      shotsCentral: 0
+    };
   }
 
   private getInitialMorale(attributes?: PlayerAttributes) {
@@ -995,6 +1141,173 @@ export class GameEngineAgent {
     });
   }
 
+  private isAdaptationEnabled(teamId: string) {
+    const team = this.teamSetup?.teams.find((entry) => entry.id === teamId);
+    if (!team) return false;
+    return team.controlType === 'ai' || team.assistTactics;
+  }
+
+  private updateOpponentAdaptation() {
+    if (!this.teamSetup) return;
+    if (this.state.time < ADAPTATION_INITIAL_DELAY) return;
+
+    this.state.teams.forEach((team) => {
+      if (!this.isAdaptationEnabled(team.id)) return;
+      const state = this.adaptationState[team.id];
+      if (!state || this.state.time < state.nextCheck) return;
+
+      const window = state.window;
+      const totalEvents = window.passes + window.shots;
+      if (totalEvents < ADAPTATION_MIN_EVENTS) {
+        state.nextCheck = this.state.time + ADAPTATION_WINDOW_SECONDS;
+        state.window = this.createAdaptationWindow();
+        return;
+      }
+
+      const longRate = window.passes > 0 ? window.longPasses / window.passes : 0;
+      const crossRate = window.passes > 0 ? window.crosses / window.passes : 0;
+      const totalEntries = window.entriesLeft + window.entriesRight + window.entriesCentral;
+      const leftRate = totalEntries > 0 ? window.entriesLeft / totalEntries : 0;
+      const rightRate = totalEntries > 0 ? window.entriesRight / totalEntries : 0;
+      const centralRate = totalEntries > 0 ? window.entriesCentral / totalEntries : 0;
+      const wideRate = leftRate + rightRate;
+      const shotWideRate = window.shots > 0 ? window.shotsWide / window.shots : 0;
+
+      const updates: Record<string, string> = {};
+
+      if (longRate > 0.45) {
+        updates.defensive_line = longRate > 0.6 ? 'Deeper' : 'Standard';
+        updates.line_of_engagement = longRate > 0.55 ? 'Low Block' : 'Mid Block';
+        updates.defensive_transition = 'Regroup';
+      } else if (longRate < 0.3) {
+        updates.line_of_engagement = 'High Press';
+        updates.trigger_press = 'More Often';
+        updates.defensive_transition = 'Counter-Press';
+      }
+
+      if (crossRate > 0.3 || shotWideRate > 0.45) {
+        updates.cross_engagement = 'Contest';
+      } else if (crossRate < 0.15 && shotWideRate < 0.2) {
+        updates.cross_engagement = 'Hold Position';
+      } else {
+        updates.cross_engagement = 'Balanced';
+      }
+
+      if (centralRate > 0.55) {
+        updates.pressing_trap = 'Active';
+      } else if (centralRate < 0.35) {
+        updates.pressing_trap = 'Balanced';
+      }
+
+      if (leftRate > rightRate + ADAPTATION_LANE_MARGIN) {
+        updates.progress_through = 'Right';
+        updates.attacking_width = 'Wider';
+      } else if (rightRate > leftRate + ADAPTATION_LANE_MARGIN) {
+        updates.progress_through = 'Left';
+        updates.attacking_width = 'Wider';
+      } else if (centralRate > 0.55) {
+        updates.attacking_width = 'Narrower';
+        updates.progress_through = 'Balanced';
+      } else {
+        updates.progress_through = 'Balanced';
+      }
+
+      this.applyAdaptiveInstructions(team.id, updates);
+      state.nextCheck = this.state.time + ADAPTATION_WINDOW_SECONDS;
+      state.window = this.createAdaptationWindow();
+    });
+  }
+
+  private applyAdaptiveInstructions(teamId: string, updates: Record<string, string>) {
+    if (!this.teamSetup) return;
+    const team = this.teamSetup.teams.find((entry) => entry.id === teamId);
+    if (!team) return;
+
+    let changed = false;
+    const next = { ...team.instructions };
+    Object.entries(updates).forEach(([key, value]) => {
+      if (!value) return;
+      if (next[key] !== value) {
+        next[key] = value;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      team.instructions = next;
+    }
+  }
+
+  private recordOpponentPassTendency(
+    attackingTeamId: string,
+    passer: typeof this.state.players[number],
+    receiver: typeof this.state.players[number]
+  ) {
+    const defendingTeamId = this.getOpponentTeamId(attackingTeamId);
+    if (!this.isAdaptationEnabled(defendingTeamId)) return;
+    const state = this.adaptationState[defendingTeamId];
+    if (!state) return;
+
+    const dx = receiver.position.x - passer.position.x;
+    const dy = receiver.position.y - passer.position.y;
+    const distance = Math.hypot(dx, dy);
+    const window = state.window;
+    window.passes += 1;
+    if (distance >= 24) window.longPasses += 1;
+    if (this.isCrossPass(attackingTeamId, passer.position, receiver.position)) {
+      window.crosses += 1;
+    }
+
+    if (this.isFinalThird(attackingTeamId, receiver.position)) {
+      this.recordLaneEntry(window, receiver.position);
+    }
+  }
+
+  private recordOpponentShotTendency(attackingTeamId: string, shooter: typeof this.state.players[number]) {
+    const defendingTeamId = this.getOpponentTeamId(attackingTeamId);
+    if (!this.isAdaptationEnabled(defendingTeamId)) return;
+    const state = this.adaptationState[defendingTeamId];
+    if (!state) return;
+
+    const window = state.window;
+    window.shots += 1;
+    const midY = this.pitch.height / 2;
+    if (Math.abs(shooter.position.y - midY) > 12) {
+      window.shotsWide += 1;
+    } else {
+      window.shotsCentral += 1;
+    }
+
+    if (this.isFinalThird(attackingTeamId, shooter.position)) {
+      this.recordLaneEntry(window, shooter.position);
+    }
+  }
+
+  private recordLaneEntry(window: AdaptationWindow, position: Vector2) {
+    const midY = this.pitch.height / 2;
+    if (position.y < midY - 8) {
+      window.entriesLeft += 1;
+    } else if (position.y > midY + 8) {
+      window.entriesRight += 1;
+    } else {
+      window.entriesCentral += 1;
+    }
+  }
+
+  private isFinalThird(teamId: string, position: Vector2) {
+    const direction = this.getAttackDirection(teamId);
+    const axis = this.getAttackAxis(position.x, direction);
+    return axis >= this.pitch.width * 0.66;
+  }
+
+  private isCrossPass(attackingTeamId: string, passer: Vector2, receiver: Vector2) {
+    const midY = this.pitch.height / 2;
+    const passerWide = Math.abs(passer.y - midY) > 16;
+    const receiverInBox = this.isInAttackingBox(attackingTeamId, receiver);
+    const distance = Math.hypot(receiver.x - passer.x, receiver.y - passer.y);
+    return passerWide && (receiverInBox || distance > 22);
+  }
+
   private updateInjuries(dt: number) {
     const matchProgress = Math.min(this.state.time / 5400, 1);
     const importance = this.matchImportance;
@@ -1102,8 +1415,18 @@ export class GameEngineAgent {
 
     const targetPref = instructions?.gk_distribution_target ?? 'Centre-Backs';
     const goalKickStyle = instructions?.goal_kicks ?? 'Mixed';
-    const wantsShort = goalKickStyle === 'Short' || instructions?.short_goalkeeper_distribution === 'Yes';
-    const wantsLong = goalKickStyle === 'Long';
+    let wantsShort = goalKickStyle === 'Short' || instructions?.short_goalkeeper_distribution === 'Yes';
+    let wantsLong = goalKickStyle === 'Long';
+    if (this.hasPlaystylePlus(goalkeeper, 'footwork')) wantsShort = true;
+    if (this.hasPlaystylePlus(goalkeeper, 'far_throw')) wantsLong = true;
+    if (!wantsShort && !wantsLong) {
+      if (this.hasPlaystyle(goalkeeper, 'footwork')) wantsShort = true;
+      if (this.hasPlaystyle(goalkeeper, 'far_throw')) wantsLong = true;
+    }
+    if (goalKickStyle === 'Mixed') {
+      if (this.hasPlaystyle(goalkeeper, 'far_throw')) wantsLong = true;
+      if (this.hasPlaystylePlus(goalkeeper, 'footwork')) wantsShort = true;
+    }
 
     const midY = this.pitch.height / 2;
     const direction = this.getAttackDirection(goalkeeper.teamId);
@@ -1131,10 +1454,12 @@ export class GameEngineAgent {
 
     let pool = filtered.length ? filtered : withDepth;
     if (wantsLong) {
-      pool = withDepth.filter((entry) => entry.depth >= 0.6);
+      const longDepth = this.hasPlaystylePlus(goalkeeper, 'far_throw') ? 0.7 : 0.6;
+      pool = withDepth.filter((entry) => entry.depth >= longDepth);
       if (!pool.length) pool = withDepth;
     } else if (wantsShort) {
-      pool = withDepth.filter((entry) => entry.depth < 0.5);
+      const shortDepth = this.hasPlaystylePlus(goalkeeper, 'footwork') ? 0.45 : 0.5;
+      pool = withDepth.filter((entry) => entry.depth < shortDepth);
       if (!pool.length) pool = withDepth;
     }
 
@@ -1319,15 +1644,15 @@ export class GameEngineAgent {
     tackleChance *= this.getMoraleFactor(defender);
     tackleChance *= 1 / this.getMoraleFactor(possessor);
 
-    if (this.hasPlaystyle(defender, 'anticipate')) tackleChance *= 1.08;
-    if (this.hasPlaystyle(defender, 'jockey')) tackleChance *= 1.05;
-    if (this.hasPlaystyle(defender, 'bruiser')) tackleChance *= 1.06;
-    if (this.hasPlaystyle(defender, 'enforcer')) tackleChance *= 1.04;
+    tackleChance *= this.getPlaystyleMultiplier(defender, 'anticipate', 1.08, 1.12);
+    tackleChance *= this.getPlaystyleMultiplier(defender, 'jockey', 1.05, 1.08);
+    tackleChance *= this.getPlaystyleMultiplier(defender, 'bruiser', 1.06, 1.1);
+    tackleChance *= this.getPlaystyleMultiplier(defender, 'enforcer', 1.04, 1.07);
     if (this.hasTrait(defender, 'dives_into_tackles')) tackleChance *= 1.08;
     if (this.hasTrait(defender, 'does_not_dive_into_tackles')) tackleChance *= 0.9;
-    if (this.hasPlaystyle(possessor, 'press_proven')) tackleChance *= 0.95;
-    if (this.hasPlaystyle(possessor, 'rapid')) tackleChance *= 0.96;
-    if (this.hasPlaystyle(possessor, 'technical')) tackleChance *= 0.96;
+    tackleChance *= this.getPlaystyleMultiplier(possessor, 'press_proven', 0.95, 0.92);
+    tackleChance *= this.getPlaystyleMultiplier(possessor, 'rapid', 0.96, 0.93);
+    tackleChance *= this.getPlaystyleMultiplier(possessor, 'technical', 0.96, 0.93);
 
     tackleChance = clamp(tackleChance, 0.04, 0.55);
 
@@ -1372,6 +1697,7 @@ export class GameEngineAgent {
     const shouldShoot = this.shouldShoot(possessor, instructions, pressure, passTarget !== null);
 
     if (shouldShoot) {
+      this.recordOpponentShotTendency(this.possession.teamId, possessor);
       const decision = this.rules.decideShot(this.state, this.possession.teamId, possessor, instructions);
       this.applyRuleDecision(decision);
       this.actionCooldown = this.getActionCooldown(possessor, instructions, decision.type, pressure);
@@ -1379,6 +1705,7 @@ export class GameEngineAgent {
     }
 
     if (passTarget) {
+      this.recordOpponentPassTendency(this.possession.teamId, possessor, passTarget);
       const leadPosition = this.getPassLeadPosition(possessor, passTarget, instructions);
       const decision = this.rules.decidePass(
         this.state,
@@ -1412,6 +1739,7 @@ export class GameEngineAgent {
     const dribbling = this.getAttribute(player, 'dribbling');
     let carryChance = 0.15 + (dribbling / 100) * 0.3;
     const roleBehavior = this.getRoleBehavior(player);
+    const roleProfile = this.getRoleArchetypeProfile(player);
     const moraleFactor = this.getMoraleFactor(player);
     const fatigue = player.fatigue ?? 0;
 
@@ -1422,18 +1750,25 @@ export class GameEngineAgent {
       carryChance -= 0.08;
     }
 
-    if (this.hasPlaystyle(player, 'rapid')) carryChance += 0.06;
-    if (this.hasPlaystyle(player, 'technical')) carryChance += 0.05;
-    if (this.hasPlaystyle(player, 'press_proven')) carryChance += 0.04;
-    if (this.hasPlaystyle(player, 'trickster')) carryChance += 0.04;
+    carryChance += this.getPlaystyleBonus(player, 'rapid', 0.06, 0.08);
+    carryChance += this.getPlaystyleBonus(player, 'technical', 0.05, 0.07);
+    carryChance += this.getPlaystyleBonus(player, 'press_proven', 0.04, 0.06);
+    carryChance += this.getPlaystyleBonus(player, 'trickster', 0.04, 0.06);
+    carryChance += this.getPlaystyleBonus(player, 'quick_step', 0.04, 0.06);
+    carryChance += this.getPlaystyleBonus(player, 'flair', 0.03, 0.05);
+    carryChance += this.getPlaystyleBonus(player, 'gamechanger', 0.04, 0.06);
     if (this.hasTrait(player, 'runs_with_ball_often')) carryChance += 0.12;
     if (this.hasTrait(player, 'runs_with_ball_rarely')) carryChance -= 0.18;
     if (this.hasTrait(player, 'knocks_ball_past_opponent')) carryChance += 0.06;
     if (this.hasTrait(player, 'tries_to_play_way_out_of_trouble')) carryChance += 0.05;
+    if (this.hasTrait(player, 'runs_with_ball_down_left')) carryChance += 0.05;
+    if (this.hasTrait(player, 'runs_with_ball_down_right')) carryChance += 0.05;
+    if (this.hasTrait(player, 'runs_with_ball_down_centre')) carryChance += 0.04;
 
     carryChance += roleBehavior.carry * 0.18;
     carryChance += roleBehavior.risk * 0.08;
     carryChance -= roleBehavior.hold * 0.08;
+    carryChance += roleProfile.decision.carryBias;
 
     carryChance *= moraleFactor * (1 - fatigue * 0.25);
     carryChance *= 1 - clamp(pressure * 0.55, 0, 0.45);
@@ -1489,6 +1824,7 @@ export class GameEngineAgent {
     const distance = Math.hypot(goal.x - player.position.x, goal.y - player.position.y);
     const shotSkill = this.getShotSkill(player);
     const roleBehavior = this.getRoleBehavior(player);
+    const roleProfile = this.getRoleArchetypeProfile(player);
     const creativeBias = this.getCreativeFreedomBias(instructions);
     const moraleFactor = this.getMoraleFactor(player);
     const fatigue = player.fatigue ?? 0;
@@ -1508,12 +1844,25 @@ export class GameEngineAgent {
     if (shotsInstruction === 'Encouraged') desire += 0.06;
     if (shotsInstruction === 'Reduced') desire -= 0.08;
 
-    if (this.hasPlaystyle(player, 'power_shot')) desire += 0.05;
-    if (this.hasPlaystyle(player, 'finesse_shot')) desire += 0.05;
-    if (this.hasPlaystyle(player, 'chip_shot')) desire += 0.03;
+    desire += this.getPlaystyleBonus(player, 'power_shot', 0.05, 0.07);
+    desire += this.getPlaystyleBonus(player, 'finesse_shot', 0.05, 0.07);
+    desire += this.getPlaystyleBonus(player, 'chip_shot', 0.03, 0.05);
+    desire += this.getPlaystyleBonus(player, 'trivela', 0.04, 0.06);
+    desire += this.getPlaystyleBonus(player, 'acrobatic', distance <= 14 ? 0.03 : 0.01, distance <= 14 ? 0.05 : 0.02);
+    desire += this.getPlaystyleBonus(player, 'gamechanger', 0.05, 0.07);
+    if (distance <= 12) {
+      desire += this.getPlaystyleBonus(player, 'aerial', 0.03, 0.05);
+    }
+    if (distance <= 10) {
+      desire += this.getPlaystyleBonus(player, 'power_header', 0.03, 0.05);
+      desire += this.getPlaystyleBonus(player, 'precision_header', 0.02, 0.04);
+    }
     if (this.hasTrait(player, 'shoots_with_power')) desire += 0.04;
     if (this.hasTrait(player, 'places_shots')) desire += 0.03;
     if (this.hasTrait(player, 'tries_first_time_shots') && distance <= 18) desire += 0.05;
+    if (this.hasTrait(player, 'attempts_overhead_kicks') && distance <= 10) desire += 0.03;
+    if (this.hasTrait(player, 'likes_to_lob_keeper') && distance <= 14) desire += 0.04;
+    if (this.hasTrait(player, 'likes_to_round_keeper') && distance <= 12) desire += 0.03;
     if (this.hasTrait(player, 'looks_for_pass_rather_than_attempting_to_score')) desire -= 0.1;
     if (this.hasTrait(player, 'penalty_box_player') && distance <= 12) desire += 0.06;
     if (this.hasTrait(player, 'plays_with_back_to_goal')) desire -= 0.08;
@@ -1523,6 +1872,7 @@ export class GameEngineAgent {
     desire += roleBehavior.risk * 0.08;
     desire -= roleBehavior.pass * 0.08;
     desire -= roleBehavior.hold * 0.05;
+    desire += roleProfile.decision.shootBias;
     desire += creativeBias;
     desire *= moraleFactor * (1 - fatigue * 0.2);
 
@@ -1553,8 +1903,18 @@ export class GameEngineAgent {
 
     const desiredDistance = this.getDesiredPassDistance(passer, instructions);
     const roleBehavior = this.getRoleBehavior(passer);
+    const roleProfile = this.getRoleArchetypeProfile(passer);
     const creativeBias = this.getCreativeFreedomBias(instructions);
-    const riskBias = roleBehavior.risk + creativeBias;
+    const inventive = this.hasPlaystyle(passer, 'inventive');
+    const flair = this.hasPlaystyle(passer, 'flair');
+    const gamechanger = this.hasPlaystyle(passer, 'gamechanger');
+    const whippedPass = this.hasPlaystyle(passer, 'whipped_pass');
+    const longBall = this.hasPlaystyle(passer, 'long_ball_pass');
+    const riskBias =
+      roleBehavior.risk + creativeBias + roleProfile.decision.riskBias +
+      (inventive ? this.getPlaystyleBonus(passer, 'inventive', 0.08, 0.12) : 0) +
+      (flair ? this.getPlaystyleBonus(passer, 'flair', 0.05, 0.08) : 0) +
+      (gamechanger ? this.getPlaystyleBonus(passer, 'gamechanger', 0.08, 0.12) : 0);
     const fatigue = passer.fatigue ?? 0;
     const fatigueRiskScale = 1 - fatigue * 0.5;
     const direction = this.getAttackDirection(teamId);
@@ -1585,10 +1945,12 @@ export class GameEngineAgent {
         const runAhead =
           this.getAttackAxis(runTarget.x, direction) - this.getAttackAxis(receiver.position.x, direction);
         let runBonus = clamp(runAhead / 12, 0, 0.25);
-        if (this.hasTrait(receiver, 'tries_to_beat_offside_trap')) runBonus *= 1.2;
+        if (this.hasTrait(receiver, 'likes_to_try_to_beat_offside_trap')) runBonus *= 1.2;
         if (this.hasTrait(receiver, 'moves_into_channels')) runBonus *= 1.1;
         if (this.hasTrait(passer, 'tries_killer_balls_often')) runBonus *= 1.2;
-        if (this.hasPlaystyle(passer, 'incisive_pass')) runBonus *= 1.15;
+        if (this.hasPlaystyle(passer, 'incisive_pass')) {
+          runBonus *= this.getPlaystyleMultiplier(passer, 'incisive_pass', 1.15, 1.2);
+        }
         if (this.hasTrait(passer, 'plays_no_through_balls')) runBonus *= 0.6;
 
         let sideBonus = 0;
@@ -1600,6 +1962,13 @@ export class GameEngineAgent {
             (passer.position.y > midline && receiver.position.y < midline))
         ) {
           sideBonus += 0.12;
+        }
+        if (
+          this.hasPlaystyle(passer, 'trivela') &&
+          ((passer.position.y < midline && receiver.position.y > midline) ||
+            (passer.position.y > midline && receiver.position.y < midline))
+        ) {
+          sideBonus += this.getPlaystyleBonus(passer, 'trivela', 0.06, 0.09);
         }
 
         if (roleBehavior.width > 0.1) {
@@ -1616,9 +1985,18 @@ export class GameEngineAgent {
             sideBonus += roleBehavior.cross * 0.12;
           }
         }
+        if (whippedPass) {
+          const wideZone = Math.abs(passer.position.y - midline) > 10;
+          if (wideZone && this.isInAttackingBox(teamId, receiver.position)) {
+            sideBonus += this.getPlaystyleBonus(passer, 'whipped_pass', 0.12, 0.16);
+          }
+        }
 
         if (prefersShort && distance > desiredDistance) {
           distanceScore *= 0.85;
+        }
+        if (longBall && distance > desiredDistance) {
+          distanceScore *= this.getPlaystyleMultiplier(passer, 'long_ball_pass', 1.08, 1.12);
         }
         if (oneTwos && distance <= 12) {
           distanceScore += 0.15;
@@ -1680,7 +2058,10 @@ export class GameEngineAgent {
     const throughSkill = (vision + decisions + technique) / 300;
     let chance = 0.25 + throughSkill * 0.5;
     if (this.hasTrait(passer, 'tries_killer_balls_often')) chance += 0.18;
-    if (this.hasPlaystyle(passer, 'incisive_pass')) chance += 0.12;
+    chance += this.getPlaystyleBonus(passer, 'incisive_pass', 0.12, 0.16);
+    chance += this.getPlaystyleBonus(passer, 'inventive', 0.08, 0.12);
+    chance += this.getPlaystyleBonus(passer, 'gamechanger', 0.06, 0.1);
+    chance += this.getPlaystyleBonus(passer, 'trivela', 0.04, 0.06);
     if (this.hasTrait(passer, 'plays_no_through_balls')) chance -= 0.25;
     if (instructions?.passing_directness === 'Much Shorter') chance -= 0.1;
     if (instructions?.passing_directness === 'Much More Direct') chance += 0.06;
@@ -1709,13 +2090,16 @@ export class GameEngineAgent {
               : 20;
 
     const roleBehavior = this.getRoleBehavior(passer);
+    const roleProfile = this.getRoleArchetypeProfile(passer);
     const creativeBias = this.getCreativeFreedomBias(instructions);
     const fatigue = passer.fatigue ?? 0;
 
-    if (this.hasPlaystyle(passer, 'tiki_taka')) desired -= 3;
-    if (this.hasPlaystyle(passer, 'long_ball_pass')) desired += 4;
-    if (this.hasPlaystyle(passer, 'pinged_pass')) desired += 2;
-    if (this.hasPlaystyle(passer, 'incisive_pass')) desired += 2;
+    desired += this.getPlaystyleBonus(passer, 'tiki_taka', -3, -4);
+    desired += this.getPlaystyleBonus(passer, 'long_ball_pass', 4, 6);
+    desired += this.getPlaystyleBonus(passer, 'pinged_pass', 2, 3);
+    desired += this.getPlaystyleBonus(passer, 'incisive_pass', 2, 3);
+    desired += this.getPlaystyleBonus(passer, 'whipped_pass', 1, 2);
+    desired += this.getPlaystyleBonus(passer, 'inventive', 1, 2);
     if (this.hasTrait(passer, 'plays_short_simple_passes')) desired -= 4;
     if (this.hasTrait(passer, 'tries_long_range_passes')) desired += 6;
     if (this.hasTrait(passer, 'tries_killer_balls_often')) desired += 4;
@@ -1725,6 +2109,7 @@ export class GameEngineAgent {
     desired += (roleBehavior.risk + creativeBias) * 6;
     desired += roleBehavior.pass * 4;
     desired -= roleBehavior.hold * 2;
+    desired += roleProfile.decision.passDistanceBias;
     desired *= 1 - fatigue * 0.12;
 
     return clamp(desired, 8, 36);
@@ -1796,6 +2181,375 @@ export class GameEngineAgent {
 
   private getRoleBehavior(player: typeof this.state.players[number]): RoleBehavior {
     return getRoleDutyBehavior(player.roleId, player.dutyId);
+  }
+
+  private getRoleArchetypeProfile(player: typeof this.state.players[number]): RoleArchetypeProfile {
+    const profile = buildRoleArchetypeProfile();
+    const roleId = player.roleId ?? null;
+    if (!roleId) return profile;
+
+    switch (roleId) {
+      case 'ball_playing_cb':
+        profile.decision.passDistanceBias += 2;
+        profile.decision.riskBias += 0.05;
+        break;
+      case 'overlapping_cb':
+        profile.inPossession.widthBias += 0.12;
+        profile.inPossession.axisShift += 1.1;
+        profile.inPossession.runBias += 0.06;
+        break;
+      case 'advanced_cb':
+        profile.inPossession.axisShift += 1.3;
+        profile.inPossession.runBias += 0.05;
+        profile.inPossession.roamBias += 0.06;
+        break;
+      case 'wide_cb':
+        profile.inPossession.widthBias += 0.18;
+        profile.outOfPossession.widthBias += 0.12;
+        break;
+      case 'no_nonsense_cb':
+        profile.decision.passDistanceBias += 2.5;
+        profile.decision.riskBias -= 0.05;
+        profile.outOfPossession.wanderBias -= 0.05;
+        break;
+      case 'covering_cb':
+        profile.outOfPossession.axisShift -= 0.6;
+        break;
+      case 'stopping_cb':
+        profile.outOfPossession.pressBias += 0.08;
+        profile.outOfPossession.axisShift += 0.3;
+        break;
+      case 'full_back':
+        profile.inPossession.widthBias += 0.12;
+        profile.inPossession.runBias += 0.05;
+        break;
+      case 'holding_full_back':
+        profile.outOfPossession.axisShift -= 0.8;
+        profile.outOfPossession.wanderBias -= 0.08;
+        break;
+      case 'inside_full_back':
+      case 'inverted_full_back':
+        profile.inPossession.widthBias -= 0.2;
+        profile.inPossession.channelBias += 0.35;
+        profile.inPossession.axisShift -= 0.4;
+        profile.decision.passDistanceBias -= 1;
+        break;
+      case 'pressing_full_back':
+        profile.outOfPossession.pressBias += 0.12;
+        profile.inPossession.runBias += 0.04;
+        break;
+      case 'wing_back':
+        profile.inPossession.widthBias += 0.18;
+        profile.inPossession.axisShift += 1.1;
+        profile.inPossession.runBias += 0.08;
+        break;
+      case 'holding_wing_back':
+        profile.outOfPossession.axisShift -= 0.8;
+        profile.outOfPossession.wanderBias -= 0.08;
+        break;
+      case 'inside_wing_back':
+      case 'inverted_wing_back':
+        profile.inPossession.widthBias -= 0.22;
+        profile.inPossession.channelBias += 0.4;
+        profile.inPossession.axisShift -= 0.4;
+        profile.decision.passDistanceBias -= 1;
+        break;
+      case 'pressing_wing_back':
+        profile.outOfPossession.pressBias += 0.12;
+        profile.inPossession.runBias += 0.05;
+        break;
+      case 'playmaking_wing_back':
+        profile.inPossession.roamBias += 0.08;
+        profile.decision.passDistanceBias -= 1;
+        profile.decision.riskBias += 0.05;
+        break;
+      case 'advanced_wing_back':
+        profile.inPossession.widthBias += 0.22;
+        profile.inPossession.axisShift += 1.6;
+        profile.inPossession.runBias += 0.1;
+        profile.decision.carryBias += 0.05;
+        break;
+      case 'defensive_midfielder':
+        profile.outOfPossession.axisShift -= 0.4;
+        profile.outOfPossession.wanderBias -= 0.04;
+        break;
+      case 'dropping_dm':
+        profile.inPossession.axisShift -= 1.6;
+        profile.outOfPossession.axisShift -= 1;
+        profile.outOfPossession.wanderBias -= 0.05;
+        break;
+      case 'screening_dm':
+        profile.outOfPossession.axisShift -= 0.6;
+        profile.outOfPossession.pressBias += 0.05;
+        break;
+      case 'wide_covering_dm':
+        profile.outOfPossession.widthBias += 0.12;
+        break;
+      case 'half_back':
+        profile.inPossession.axisShift -= 2.6;
+        profile.outOfPossession.axisShift -= 1.6;
+        profile.outOfPossession.wanderBias -= 0.1;
+        profile.decision.passDistanceBias -= 1;
+        break;
+      case 'pressing_dm':
+        profile.outOfPossession.pressBias += 0.12;
+        profile.outOfPossession.axisShift += 0.3;
+        break;
+      case 'deep_lying_playmaker':
+        profile.inPossession.axisShift -= 1.1;
+        profile.inPossession.roamBias += 0.1;
+        profile.decision.passDistanceBias -= 2;
+        profile.decision.riskBias += 0.06;
+        break;
+      case 'central_midfielder':
+        profile.inPossession.runBias += 0.04;
+        break;
+      case 'screening_cm':
+        profile.outOfPossession.axisShift -= 0.4;
+        profile.outOfPossession.pressBias += 0.04;
+        break;
+      case 'wide_covering_cm':
+        profile.outOfPossession.widthBias += 0.12;
+        break;
+      case 'box_to_box_midfielder':
+        profile.inPossession.runBias += 0.12;
+        profile.inPossession.axisShift += 0.6;
+        profile.outOfPossession.pressBias += 0.06;
+        break;
+      case 'box_to_box_playmaker':
+        profile.inPossession.runBias += 0.1;
+        profile.inPossession.roamBias += 0.08;
+        profile.decision.passDistanceBias -= 1;
+        break;
+      case 'channel_midfielder':
+        profile.inPossession.channelBias += 0.35;
+        profile.inPossession.runBias += 0.08;
+        break;
+      case 'midfield_playmaker':
+        profile.inPossession.roamBias += 0.15;
+        profile.decision.passDistanceBias -= 2;
+        profile.decision.riskBias += 0.08;
+        break;
+      case 'pressing_cm':
+        profile.outOfPossession.pressBias += 0.14;
+        profile.outOfPossession.axisShift += 0.4;
+        break;
+      case 'wide_midfielder':
+        profile.inPossession.widthBias += 0.18;
+        profile.inPossession.runBias += 0.06;
+        break;
+      case 'tracking_wide_midfielder':
+        profile.outOfPossession.pressBias += 0.08;
+        profile.outOfPossession.axisShift -= 0.4;
+        profile.outOfPossession.wanderBias -= 0.05;
+        break;
+      case 'wide_central_midfielder':
+        profile.inPossession.channelBias += 0.3;
+        profile.inPossession.widthBias += 0.1;
+        profile.decision.passDistanceBias -= 1;
+        break;
+      case 'wide_outlet_midfielder':
+        profile.inPossession.axisShift += 1.2;
+        profile.inPossession.widthBias += 0.18;
+        profile.inPossession.runBias += 0.12;
+        profile.decision.shootBias += 0.04;
+        break;
+      case 'attacking_midfielder':
+        profile.inPossession.axisShift += 1.2;
+        profile.inPossession.runBias += 0.1;
+        profile.decision.shootBias += 0.06;
+        break;
+      case 'tracking_am':
+        profile.outOfPossession.pressBias += 0.1;
+        profile.outOfPossession.axisShift -= 0.4;
+        break;
+      case 'advanced_playmaker':
+        profile.inPossession.roamBias += 0.18;
+        profile.decision.passDistanceBias -= 2;
+        profile.decision.riskBias += 0.1;
+        break;
+      case 'central_outlet_am':
+        profile.inPossession.axisShift += 1.6;
+        profile.inPossession.runBias += 0.08;
+        profile.decision.shootBias += 0.08;
+        profile.inPossession.wanderBias -= 0.05;
+        break;
+      case 'splitting_outlet_am':
+        profile.inPossession.channelBias += 0.35;
+        profile.inPossession.axisShift += 1.4;
+        profile.inPossession.runBias += 0.1;
+        profile.decision.shootBias += 0.06;
+        break;
+      case 'free_role':
+        profile.inPossession.roamBias += 0.2;
+        profile.inPossession.runBias += 0.08;
+        profile.decision.riskBias += 0.08;
+        break;
+      case 'winger':
+        profile.inPossession.widthBias += 0.22;
+        profile.inPossession.runBias += 0.08;
+        profile.decision.carryBias += 0.06;
+        profile.decision.passDistanceBias += 1;
+        break;
+      case 'half_space_winger':
+        profile.inPossession.channelBias += 0.4;
+        profile.inPossession.diagonalShift += 1.6;
+        profile.inPossession.runBias += 0.1;
+        profile.decision.passDistanceBias -= 1;
+        break;
+      case 'inside_winger':
+        profile.inPossession.widthBias -= 0.15;
+        profile.inPossession.channelBias += 0.25;
+        profile.inPossession.diagonalShift += 2;
+        profile.inPossession.runBias += 0.12;
+        profile.decision.shootBias += 0.05;
+        profile.decision.carryBias += 0.06;
+        break;
+      case 'inverting_outlet_winger':
+        profile.inPossession.widthBias -= 0.2;
+        profile.inPossession.axisShift += 1.2;
+        profile.inPossession.runBias += 0.16;
+        profile.decision.shootBias += 0.08;
+        profile.decision.carryBias += 0.06;
+        break;
+      case 'tracking_winger':
+        profile.outOfPossession.pressBias += 0.1;
+        profile.outOfPossession.axisShift -= 0.5;
+        profile.outOfPossession.wanderBias -= 0.05;
+        break;
+      case 'wide_outlet_winger':
+        profile.inPossession.axisShift += 1.8;
+        profile.inPossession.widthBias += 0.24;
+        profile.inPossession.runBias += 0.18;
+        profile.decision.shootBias += 0.08;
+        profile.decision.carryBias += 0.06;
+        break;
+      case 'wide_playmaker':
+        profile.inPossession.widthBias += 0.12;
+        profile.inPossession.roamBias += 0.12;
+        profile.decision.passDistanceBias -= 2;
+        profile.decision.riskBias += 0.08;
+        break;
+      case 'wide_forward':
+        profile.inPossession.axisShift += 1.6;
+        profile.inPossession.widthBias += 0.15;
+        profile.inPossession.runBias += 0.16;
+        profile.decision.shootBias += 0.1;
+        profile.decision.carryBias += 0.06;
+        break;
+      case 'inside_forward':
+        profile.inPossession.widthBias -= 0.18;
+        profile.inPossession.channelBias += 0.3;
+        profile.inPossession.diagonalShift += 2.4;
+        profile.inPossession.runBias += 0.18;
+        profile.decision.shootBias += 0.1;
+        profile.decision.carryBias += 0.08;
+        break;
+      case 'false_nine':
+        profile.inPossession.axisShift -= 2.6;
+        profile.inPossession.roamBias += 0.2;
+        profile.inPossession.runBias -= 0.1;
+        profile.decision.shootBias -= 0.05;
+        profile.decision.passDistanceBias -= 2;
+        break;
+      case 'deep_lying_forward':
+        profile.inPossession.axisShift -= 1.6;
+        profile.inPossession.roamBias += 0.1;
+        profile.inPossession.runBias -= 0.05;
+        profile.decision.passDistanceBias -= 1;
+        profile.decision.shootBias -= 0.02;
+        break;
+      case 'half_space_forward':
+        profile.inPossession.channelBias += 0.4;
+        profile.inPossession.diagonalShift += 1.8;
+        profile.inPossession.axisShift += 1.3;
+        profile.inPossession.runBias += 0.15;
+        profile.decision.shootBias += 0.08;
+        break;
+      case 'second_striker':
+        profile.inPossession.axisShift += 1.1;
+        profile.inPossession.runBias += 0.12;
+        profile.inPossession.roamBias += 0.1;
+        profile.decision.shootBias += 0.06;
+        break;
+      case 'channel_forward':
+        profile.inPossession.channelBias += 0.45;
+        profile.inPossession.axisShift += 1.5;
+        profile.inPossession.runBias += 0.18;
+        profile.decision.shootBias += 0.08;
+        break;
+      case 'centre_forward':
+        profile.inPossession.axisShift += 1.2;
+        profile.inPossession.runBias += 0.12;
+        profile.decision.shootBias += 0.07;
+        break;
+      case 'central_outlet_cf':
+        profile.inPossession.axisShift += 1.8;
+        profile.inPossession.runBias += 0.1;
+        profile.decision.shootBias += 0.08;
+        profile.inPossession.wanderBias -= 0.05;
+        profile.decision.carryBias -= 0.02;
+        break;
+      case 'splitting_outlet_cf':
+        profile.inPossession.axisShift += 1.5;
+        profile.inPossession.channelBias += 0.3;
+        profile.inPossession.runBias += 0.12;
+        profile.decision.shootBias += 0.06;
+        break;
+      case 'tracking_cf':
+        profile.outOfPossession.pressBias += 0.1;
+        profile.outOfPossession.axisShift -= 0.4;
+        break;
+      case 'target_forward':
+        profile.inPossession.axisShift += 0.8;
+        profile.inPossession.runBias -= 0.08;
+        profile.inPossession.wanderBias -= 0.1;
+        profile.decision.carryBias -= 0.04;
+        profile.decision.shootBias += 0.05;
+        profile.decision.passDistanceBias -= 1;
+        break;
+      case 'poacher':
+        profile.inPossession.axisShift += 2;
+        profile.inPossession.runBias += 0.25;
+        profile.inPossession.roamBias -= 0.1;
+        profile.decision.shootBias += 0.12;
+        profile.decision.passDistanceBias -= 1;
+        break;
+      default:
+        break;
+    }
+
+    const dutyId = player.dutyId ?? null;
+    if (dutyId === 'attack') {
+      profile.inPossession.axisShift += 0.6;
+      profile.inPossession.runBias += 0.05;
+      profile.decision.shootBias += 0.03;
+      profile.outOfPossession.pressBias += 0.03;
+    } else if (dutyId === 'support') {
+      profile.inPossession.runBias += 0.02;
+      profile.decision.passDistanceBias -= 0.5;
+    } else if (dutyId === 'defend') {
+      profile.inPossession.axisShift -= 0.8;
+      profile.inPossession.runBias -= 0.08;
+      profile.outOfPossession.axisShift -= 0.6;
+      profile.outOfPossession.pressBias += 0.05;
+      profile.decision.shootBias -= 0.05;
+      profile.decision.carryBias -= 0.04;
+      profile.inPossession.wanderBias -= 0.05;
+    } else if (dutyId === 'stopper') {
+      profile.outOfPossession.pressBias += 0.1;
+      profile.outOfPossession.axisShift += 0.3;
+      profile.inPossession.runBias -= 0.02;
+    } else if (dutyId === 'cover') {
+      profile.outOfPossession.axisShift -= 0.7;
+      profile.outOfPossession.wanderBias -= 0.04;
+      profile.inPossession.runBias -= 0.04;
+    } else if (dutyId === 'automatic') {
+      profile.inPossession.runBias += 0.02;
+      profile.outOfPossession.pressBias += 0.02;
+    }
+
+    return profile;
   }
 
   private getLineDepth(x: number, direction: number) {
@@ -1928,6 +2682,13 @@ export class GameEngineAgent {
     return midY + offset * (1 + clampedBias);
   }
 
+  private getChannelLaneY(baseY: number, midY: number) {
+    const side = Math.sign(baseY - midY);
+    if (side === 0) return midY;
+    const laneOffset = midY * 0.45;
+    return midY + side * laneOffset;
+  }
+
   private getAttackingWidthBias(value?: string) {
     switch (value) {
       case 'Much Narrower':
@@ -2042,6 +2803,32 @@ export class GameEngineAgent {
     return Boolean(player.playstyles?.includes(id) || player.playstylesPlus?.includes(id));
   }
 
+  private hasPlaystylePlus(player: typeof this.state.players[number], id: string) {
+    return Boolean(player.playstylesPlus?.includes(id));
+  }
+
+  private getPlaystyleBonus(
+    player: typeof this.state.players[number],
+    id: string,
+    standard: number,
+    plus: number
+  ) {
+    if (player.playstylesPlus?.includes(id)) return plus;
+    if (player.playstyles?.includes(id)) return standard;
+    return 0;
+  }
+
+  private getPlaystyleMultiplier(
+    player: typeof this.state.players[number],
+    id: string,
+    standard: number,
+    plus: number
+  ) {
+    if (player.playstylesPlus?.includes(id)) return plus;
+    if (player.playstyles?.includes(id)) return standard;
+    return 1;
+  }
+
   private hasTrait(player: typeof this.state.players[number], id: string) {
     return Boolean(player.traits?.includes(id));
   }
@@ -2142,7 +2929,22 @@ export class GameEngineAgent {
       this.state.ball.position = { ...decision.restartPosition };
       this.state.ball.velocity = { x: 0, y: 0 };
     }
-    this.commentaryAgent.addLine(this.state.time, decision.commentary);
+    const stats = this.statsAgent.getStats();
+    const opponentId = this.getOpponentTeamId(decision.teamId);
+    const scoreFor = stats.byTeam[decision.teamId]?.goals ?? 0;
+    const scoreAgainst = stats.byTeam[opponentId]?.goals ?? 0;
+    const scoreForBefore = decision.type === 'goal' ? Math.max(0, scoreFor - 1) : scoreFor;
+    const scoreAgainstBefore = scoreAgainst;
+    this.commentaryAgent.addDecision(decision, {
+      timeSeconds: this.state.time,
+      teamName: this.resolveTeamName(decision.teamId),
+      opponentName: this.resolveTeamName(opponentId),
+      scoreFor,
+      scoreAgainst,
+      scoreForBefore,
+      scoreAgainstBefore,
+      chanceQuality: decision.chanceQuality
+    });
 
     const hasTurnover =
       !decision.restartType && decision.turnoverPlayerId && decision.turnoverTeamId;
@@ -2334,6 +3136,117 @@ export class GameEngineAgent {
     this.applyRestartPositions(positions, restart.remaining + 0.5, 0.65);
   }
 
+  private getSetPieceAssignments(
+    teamId: string,
+    takerId: string | null,
+    settings: SetPieceWizardSettings
+  ): SetPieceAssignments {
+    const candidates = this.getActiveTeamPlayers(teamId).filter(
+      (player) => player.id !== takerId && !this.isGoalkeeperRole(player)
+    );
+    if (!candidates.length) {
+      return { aerial: [], box: [], creators: [], recovery: [], remaining: [] };
+    }
+
+    const attackCount =
+      settings.numbersCommitted === 'stay_high' ? 6 : settings.numbersCommitted === 'defend_transition' ? 3 : 5;
+    const recoveryCount =
+      settings.numbersCommitted === 'defend_transition' ? 3 : settings.numbersCommitted === 'stay_high' ? 1 : 2;
+    const creatorCount = attackCount >= 5 ? 2 : 1;
+    const aerialCount = Math.min(3, attackCount);
+    const boxCount = Math.max(0, attackCount - aerialCount);
+
+    const scored = candidates.map((player) => ({
+      player,
+      scores: this.getSetPieceRoleScores(player)
+    }));
+
+    const assigned = new Set<string>();
+    const pickTop = (key: keyof SetPieceRoleScores, count: number) => {
+      if (count <= 0) return [];
+      return scored
+        .filter((entry) => !assigned.has(entry.player.id))
+        .sort((a, b) => b.scores[key] - a.scores[key])
+        .slice(0, count)
+        .map((entry) => {
+          assigned.add(entry.player.id);
+          return entry.player;
+        });
+    };
+
+    const aerial = pickTop('aerial', aerialCount);
+    const box = pickTop('box', boxCount);
+    const creators = pickTop('creator', creatorCount);
+    const recovery = pickTop('recovery', recoveryCount);
+    const remaining = candidates.filter((player) => !assigned.has(player.id));
+
+    return { aerial, box, creators, recovery, remaining };
+  }
+
+  private getSetPieceRoleScores(player: SimPlayer): SetPieceRoleScores {
+    const finishing = this.getAttribute(player, 'finishing');
+    const offTheBall = this.getAttribute(player, 'off_the_ball');
+    const anticipation = this.getAttribute(player, 'anticipation');
+    const composure = this.getAttribute(player, 'composure');
+    const passing = this.getAttribute(player, 'passing');
+    const vision = this.getAttribute(player, 'vision');
+    const technique = this.getAttribute(player, 'technique');
+    const decisions = this.getAttribute(player, 'decisions');
+    const pace = this.getAttribute(player, 'pace');
+    const stamina = this.getAttribute(player, 'stamina');
+    const positioning = this.getAttribute(player, 'positioning');
+    const workRate = this.getAttribute(player, 'work_rate');
+    const tackling = this.getAttribute(player, 'tackling');
+    const strength = this.getAttribute(player, 'strength');
+
+    const aerial = this.getAerialScore(player);
+    const box = (finishing + offTheBall + anticipation + composure) / 4 + strength * 0.1;
+    const creator = (passing + vision + technique + decisions) / 4;
+    const recovery = (pace + stamina + positioning + workRate) / 4 + tackling * 0.08;
+
+    return { aerial, box, creator, recovery };
+  }
+
+  private assignSetPieceTargets(players: SimPlayer[], targets: Vector2[], positions: Map<string, Vector2>) {
+    if (!players.length || !targets.length) return;
+    const available = players.filter((player) => !positions.has(player.id));
+    targets.forEach((target) => {
+      const player = available.shift();
+      if (player) {
+        positions.set(player.id, target);
+      }
+    });
+  }
+
+  private assignRecoveryPositions(
+    teamId: string,
+    players: SimPlayer[],
+    positions: Map<string, Vector2>
+  ) {
+    if (!players.length) return;
+    const slots = this.getRecoveryPositions(teamId, players.length);
+    const available = players.filter((player) => !positions.has(player.id)).slice(0, slots.length);
+    slots.forEach((slot, index) => {
+      const player = available[index];
+      if (player) {
+        positions.set(player.id, slot);
+      }
+    });
+  }
+
+  private getRecoveryPositions(teamId: string, count: number) {
+    const direction = this.getAttackDirection(teamId);
+    const baseX = this.pitch.width / 2 - direction * 14;
+    const midY = this.pitch.height / 2;
+    const offsets =
+      count === 1 ? [0] : count === 2 ? [-8, 8] : count === 3 ? [-10, 0, 10] : [-12, -4, 4, 12];
+
+    return offsets.slice(0, count).map((offset) => ({
+      x: clamp(baseX, 1, this.pitch.width - 1),
+      y: clamp(midY + offset, 1, this.pitch.height - 1)
+    }));
+  }
+
   private alignCornerPositions(restart: RestartState) {
     const positions = new Map<string, Vector2>();
     if (restart.takerId) positions.set(restart.takerId, restart.position);
@@ -2347,20 +3260,17 @@ export class GameEngineAgent {
     const attackCount =
       settings.numbersCommitted === 'stay_high' ? 6 : settings.numbersCommitted === 'defend_transition' ? 3 : 5;
     const attackTargets = this.getCornerTargetPositions(goal.x, midY, cornerSide, settings, attackCount);
+    const assignments = this.getSetPieceAssignments(attackingTeamId, restart.takerId, settings);
+    const edgeCount = Math.min(2, Math.max(0, attackTargets.length - 3));
+    const primaryTargets = attackTargets.slice(0, attackTargets.length - edgeCount);
+    const edgeTargets = attackTargets.slice(-edgeCount);
 
-    const attackers = this.getActiveTeamPlayers(attackingTeamId).filter(
-      (player) => player.id !== restart.takerId && !this.isGoalkeeperRole(player)
-    );
-    const sortedAttackers = attackers
-      .slice()
-      .sort((a, b) => this.getAerialScore(b) - this.getAerialScore(a));
-
-    attackTargets.forEach((pos, index) => {
-      const player = sortedAttackers[index];
-      if (player) {
-        positions.set(player.id, pos);
-      }
-    });
+    this.assignSetPieceTargets(assignments.aerial, primaryTargets, positions);
+    this.assignSetPieceTargets(assignments.box, primaryTargets, positions);
+    this.assignSetPieceTargets(assignments.remaining, primaryTargets, positions);
+    this.assignSetPieceTargets(assignments.creators, edgeTargets, positions);
+    this.assignSetPieceTargets(assignments.remaining, edgeTargets, positions);
+    this.assignRecoveryPositions(attackingTeamId, assignments.recovery, positions);
 
     const defenders = this.getActiveTeamPlayers(defendingTeamId).filter(
       (player) => !this.isGoalkeeperRole(player)
@@ -2517,7 +3427,11 @@ export class GameEngineAgent {
     const directChance = distance < 30
       ? 0.15 + (setPieceSkill / 100) * 0.45
       : 0.05 + (setPieceSkill / 100) * 0.1;
-    const shouldShoot = !wideAngle && Math.random() < directChance;
+    let shotChance = directChance;
+    shotChance *= this.getPlaystyleMultiplier(taker, 'dead_ball', 1.12, 1.18);
+    if (this.hasTrait(taker, 'hits_free_kicks_with_power')) shotChance *= 1.08;
+    if (this.hasTrait(taker, 'tries_long_range_free_kicks') && distance > 30) shotChance *= 1.25;
+    const shouldShoot = !wideAngle && Math.random() < clamp(shotChance, 0.05, 0.85);
 
     this.possession = { teamId: restart.teamId, playerId: taker.id };
 
@@ -2760,7 +3674,8 @@ export class GameEngineAgent {
     const candidates = this.getActiveTeamPlayers(teamId).filter((player) => !this.isGoalkeeperRole(player));
     if (!candidates.length) return null;
     return candidates.reduce((best, player) => {
-      const score = this.getAttribute(player, attributeId);
+      let score = this.getAttribute(player, attributeId);
+      score += this.getPlaystyleBonus(player, 'dead_ball', 6, 10);
       if (!best || score > best.score) {
         return { player, score };
       }
@@ -2814,6 +3729,10 @@ export class GameEngineAgent {
     const heightBoost = clamp((height - 170) / 40, 0, 0.35);
     let score = (jumping + heading + strength + bravery) / 4;
     score *= 1 + heightBoost;
+    score *= this.getPlaystyleMultiplier(player, 'aerial', 1.05, 1.08);
+    score *= this.getPlaystyleMultiplier(player, 'aerial_fortress', 1.1, 1.16);
+    score *= this.getPlaystyleMultiplier(player, 'power_header', 1.05, 1.08);
+    score *= this.getPlaystyleMultiplier(player, 'precision_header', 1.04, 1.07);
     if (this.hasTrait(player, 'penalty_box_player')) score *= 1.05;
     return score;
   }
@@ -2845,15 +3764,17 @@ export class GameEngineAgent {
     const direction = this.getAttackDirection(teamId);
     const ballAxis = this.getAttackAxis(taker.position.x, direction);
     const longThrowSkill = this.getAttribute(taker, 'long_throws');
+    const longThrowThreshold = this.hasPlaystylePlus(taker, 'long_throw') ? 55 : 65;
     const hasLongThrow =
-      longThrowSkill >= 65 ||
+      longThrowSkill >= longThrowThreshold ||
       this.hasTrait(taker, 'possesses_long_flat_throw') ||
       this.hasTrait(taker, 'uses_long_throw_to_start_counter_attacks') ||
       this.hasPlaystyle(taker, 'long_throw');
 
     const prefersLong =
       settings.numbersCommitted === 'stay_high' || settings.defensivePosture === 'counter_attack';
-    if (hasLongThrow && ballAxis > this.pitch.width * 0.45 && prefersLong) {
+    const longAxisThreshold = this.hasPlaystylePlus(taker, 'long_throw') ? 0.4 : 0.45;
+    if (hasLongThrow && ballAxis > this.pitch.width * longAxisThreshold && prefersLong) {
       return this.pickBestAerialTarget(teamId, new Set([taker.id])) ?? candidates[0];
     }
 

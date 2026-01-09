@@ -17,6 +17,8 @@ export type TeamSetup = {
   formationId: string;
   primaryColor: string;
   secondaryColor: string;
+  controlType: 'human' | 'ai';
+  assistTactics: boolean;
   roster: PlayerImport[];
   slots: LineupSlot[];
   bench: string[];
