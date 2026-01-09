@@ -6,7 +6,7 @@ This guide lists every supported import column, the allowed values, and the avai
 
 - `name`: Player display name (string).
 - `positions`: One or more positions (string list). Separate values with `|`, `;`, or `/` in CSV. No enforced list; use your preferred naming.
-- `age`: 14-45 (number).
+- `age`: 14-45 (number). Influences fatigue, injury risk, and experience under pressure.
 - `heightCm`: 140-220 (number).
 - `weightKg`: 45-120 (number).
 - `leftFoot`: 0-100 or 1-20 (scaled to 0-100).

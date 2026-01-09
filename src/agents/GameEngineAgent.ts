@@ -18,6 +18,7 @@ import {
   getPassLeadPosition,
   getPressureOnPlayer,
   getShotSkill,
+  findNearestOpponent,
   handleGoalkeeperPossession,
   shouldCarryBall,
   shouldShoot,
@@ -958,12 +959,16 @@ export class GameEngineAgent {
     const composure = this.getAttribute(possessor, 'composure');
     const carrierStrength = this.getAttribute(possessor, 'strength');
     const attackerSkill = (dribbling + agility + balance + composure + carrierStrength) / 5;
+    const defenderPhysical = this.getPhysicalContestScore(defender);
+    const attackerPhysical = this.getPhysicalContestScore(possessor);
+    const physicalEdge = clamp((defenderPhysical - attackerPhysical) / 200, -0.22, 0.22);
 
     let tackleChance = 0.08 + proximity * 0.3 + (defenderSkill - attackerSkill) / 200;
     tackleChance *= 1 - (defender.fatigue ?? 0) * 0.25;
     tackleChance *= 1 + (possessor.fatigue ?? 0) * 0.2;
     tackleChance *= this.getMoraleFactor(defender);
     tackleChance *= 1 / this.getMoraleFactor(possessor);
+    tackleChance *= 1 + physicalEdge;
 
     tackleChance *= this.getPlaystyleMultiplier(defender, 'anticipate', 1.08, 1.12);
     tackleChance *= this.getPlaystyleMultiplier(defender, 'jockey', 1.05, 1.08);
@@ -984,6 +989,12 @@ export class GameEngineAgent {
     if (instructions?.tackling === 'Ease Off') foulChance -= 0.04;
     if (this.hasTrait(defender, 'dives_into_tackles')) foulChance *= 1.2;
     if (this.hasTrait(defender, 'does_not_dive_into_tackles')) foulChance *= 0.85;
+    const collisionFactor = clamp(
+      1 + (defender.weightKg - 75) * 0.004 + (defender.heightCm - 180) * 0.001,
+      0.9,
+      1.1
+    );
+    foulChance *= collisionFactor;
 
     foulChance = clamp(foulChance, 0.02, 0.35);
 
@@ -1544,6 +1555,29 @@ export class GameEngineAgent {
 
   private getAttribute(player: typeof this.state.players[number], id: string, fallback = 50) {
     return player.attributes?.[id] ?? fallback;
+  }
+
+  private getPhysicalContestScore(player: typeof this.state.players[number]) {
+    const strength = this.getAttribute(player, 'strength');
+    const balance = this.getAttribute(player, 'balance');
+    const bravery = this.getAttribute(player, 'bravery');
+    const aggression = this.getAttribute(player, 'aggression');
+    const weightScore = clamp(50 + (player.weightKg - 75) * 1.1, 35, 70);
+    const heightScore = clamp(50 + (player.heightCm - 180) * 0.8, 35, 70);
+    const age = player.age;
+    let ageFactor = 1;
+    if (age < 22) ageFactor = 0.96 + (age - 18) * 0.01;
+    if (age > 30) ageFactor = 1 - (age - 30) * 0.008;
+    ageFactor = clamp(ageFactor, 0.88, 1.02);
+
+    const base =
+      strength * 0.38 +
+      balance * 0.18 +
+      bravery * 0.14 +
+      aggression * 0.1 +
+      weightScore * 0.12 +
+      heightScore * 0.08;
+    return clamp(base * ageFactor, 35, 140);
   }
 
   private getAttributeFromMap(attributes: PlayerAttributes | undefined, id: string, fallback = 50) {

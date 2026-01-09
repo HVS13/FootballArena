@@ -22,7 +22,7 @@ Key features include:
 * **Off-ball movement:** Players make forward runs, overlaps, and channel movements driven by roles, traits, and instructions.
 * **Match environment effects:** Weather, wind, temperature, and pitch conditions influence ball physics and player fatigue.
 * **Player traits:** FM player preferred moves modify decisions like carrying, passing, and shooting.
-* **Match importance, morale, and fatigue:** Match importance scales pressure and morale swings; morale and fatigue evolve over time, impacting decisions and movement, with injuries introducing temporary limitations.
+* **Match importance, morale, and fatigue:** Match importance scales pressure and morale swings; morale and fatigue evolve over time, impacting decisions and movement, with injuries introducing temporary limitations and age-based experience effects.
 * **Match HUD overlays:** On-pitch overlays summarize fatigue, morale, injuries, and discipline per team.
 * **Expanded match stats:** Pass accuracy, shots on/off target, xG, corners, offsides, tackles, interceptions, and saves.
 * **Set-piece wizard:** A six-question setup to shape marking, delivery targets, and numbers committed.
@@ -78,6 +78,7 @@ Key features include:
 | **football_game_reference.md** | Contains detailed lists of player attributes, EA Sports FC PlayStyles with their effects, Football Manager team instructions, roles, and duties. You must consult this file to understand how to implement attributes and tactics. |
 | **docs/IMPORT_SCHEMA.md** | Defines the CSV/JSON formats accepted by the DataImportAgent. |
 | **docs/IMPORT_GUIDE.md** | Full import reference with every column, options list, and explanations. |
+| **docs/CALIBRATION_TARGETS.md** | Target ranges for match stats used when tuning simulation realism. |
 | **scripts/build-reference-data.mjs** | Generates structured reference data from `football_game_reference.md`. |
 | **TODO** | A task list guiding the implementation of the game. |
 | **README** | Provides an overview of the project and guidance on how to get started. |
@@ -114,6 +115,7 @@ Optional commands:
 npm test
 npm run build
 npm run preview
+npm run calibrate:full
 ```
 
 ## Validate Imports (Optional)

@@ -15,6 +15,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
  - Maintain tactical shape (line heights, pressing triggers, marking assignments) to drive off-ball movement.
  - Track morale swings, fatigue accumulation, and injury events, adjusting performance based on match importance.
  - Resolve ball contests (tackles, interceptions, miscontrols, aerial duels), goalkeeper saves, pass/shot variance, and loose-ball rebounds to create realistic turnovers.
+ - Apply physical contest weighting (age, height, weight, strength, balance) to tackles, shielding, and aerial duels.
  - Execute structured set-piece routines (corners, free kicks, throw-ins, penalties, kick-offs) and apply advantage/card discipline outcomes.
  - Apply AI opponent adaptation logic for AI-controlled teams or when assist tactics are enabled.
  - Trigger commentary updates to UIAgent and record match statistics for StatsAgent.

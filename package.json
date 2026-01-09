@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "validate:import": "node scripts/validate-import.mjs"
+    "validate:import": "node scripts/validate-import.mjs",
+    "calibrate:full": "set CALIBRATION_FULL=1&& vitest run src/test/calibrationFullMatch.test.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

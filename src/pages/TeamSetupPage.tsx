@@ -630,6 +630,10 @@ const TeamSetupPage = () => {
           Import players, choose formation, assign roles, duties, and team instructions. Drag players to adjust
           positions.
         </p>
+        <p style={{ marginTop: '8px', fontSize: '13px', color: '#6b7280' }}>
+          Required import fields: age, heightCm, weightKg, leftFoot, rightFoot, nationality, plus all attributes.
+          Playstyles and player traits can be left blank.
+        </p>
         <div className="controls-row">
           <label className="button" htmlFor="import-file">
             Import Players

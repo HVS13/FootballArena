@@ -136,8 +136,13 @@ export const getAerialScore = (context: SetPieceContext, player: SimPlayer) => {
   const bravery = context.getAttribute(player, 'bravery');
   const height = player.heightCm;
   const heightBoost = clamp((height - 170) / 40, 0, 0.35);
+  const weightBoost = clamp(1 + (player.weightKg - 75) * 0.003, 0.9, 1.1);
+  let ageFactor = 1;
+  if (player.age < 22) ageFactor = 0.96 + (player.age - 18) * 0.01;
+  if (player.age > 30) ageFactor = 1 - (player.age - 30) * 0.006;
+  ageFactor = clamp(ageFactor, 0.9, 1.02);
   let score = (jumping + heading + strength + bravery) / 4;
-  score *= 1 + heightBoost;
+  score *= (1 + heightBoost) * weightBoost * ageFactor;
   score *= context.getPlaystyleMultiplier(player, 'aerial', 1.05, 1.08);
   score *= context.getPlaystyleMultiplier(player, 'aerial_fortress', 1.1, 1.16);
   score *= context.getPlaystyleMultiplier(player, 'power_header', 1.05, 1.08);

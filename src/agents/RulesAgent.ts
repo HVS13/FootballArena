@@ -236,14 +236,16 @@ export class RulesAgent {
     const composure = getAttribute(passer, 'composure');
     const consistency = getAttribute(passer, 'consistency');
     const importantMatches = getAttribute(passer, 'important_matches');
+    const experience = this.getExperienceFactor(passer);
     const moraleFactor = this.getMoraleFactor(passer);
     const fatigue = clamp(passer.fatigue ?? 0, 0, 1);
     const pressurePenalty = clamp(pressure * (0.4 - composure / 250) * this.matchImportance, 0, 0.45);
     const pressureResilience = clamp(1 - (importantMatches / 100) * 0.12, 0.8, 1);
-    passChance *= 1 - pressurePenalty * pressureResilience;
+    passChance *= 1 - (pressurePenalty * pressureResilience) / experience;
     passChance *= 0.9 + (consistency / 100) * 0.2;
     passChance *= moraleFactor;
     passChance *= 1 - fatigue * 0.25;
+    passChance *= experience;
     passChance *= 1 - this.getFootPenalty(passer);
     passChance *= playstyleMultiplier(passer, 'press_proven', 1.02, 1.05);
     passChance *= playstyleMultiplier(passer, 'tiki_taka', 1.05, 1.1);
@@ -445,15 +447,17 @@ export class RulesAgent {
     const composure = getAttribute(shooter, 'composure');
     const consistency = getAttribute(shooter, 'consistency');
     const importantMatches = getAttribute(shooter, 'important_matches');
+    const experience = this.getExperienceFactor(shooter);
     const moraleFactor = this.getMoraleFactor(shooter);
     const fatigue = clamp(shooter.fatigue ?? 0, 0, 1);
     const pressurePenalty = clamp(pressure * (0.45 - composure / 220) * this.matchImportance, 0, 0.45);
     const pressureResilience = clamp(1 - (importantMatches / 100) * 0.12, 0.8, 1);
-    goalChance *= 1 - pressurePenalty * pressureResilience;
+    goalChance *= 1 - (pressurePenalty * pressureResilience) / experience;
     goalChance *= 1 - this.getFootPenalty(shooter);
     goalChance *= 0.9 + (consistency / 100) * 0.2;
     goalChance *= moraleFactor;
     goalChance *= 1 - fatigue * 0.3;
+    goalChance *= experience;
 
     let onTargetChance = clamp(0.4 + (shotSkill / 100) * 0.45, 0.4, 0.85) * (1 - pressurePenalty * 0.5);
     onTargetChance *= playstyleMultiplier(shooter, 'finesse_shot', 1.03, 1.06);
@@ -473,6 +477,7 @@ export class RulesAgent {
     onTargetChance *= 0.9 + (consistency / 100) * 0.2;
     onTargetChance *= moraleFactor;
     onTargetChance *= 1 - fatigue * 0.25;
+    onTargetChance *= experience;
 
     if (context?.setPiece === 'free_kick') {
       const freeKick = getAttribute(shooter, 'free_kick_taking');
@@ -883,7 +888,8 @@ export class RulesAgent {
       if (hasTrait(opponent, 'dives_into_tackles')) multiplier *= 1.04;
       if (hasTrait(opponent, 'does_not_dive_into_tackles')) multiplier *= 0.95;
 
-      const chance = clamp(baseIntercept * closeness * (0.6 + timing * 0.4) * multiplier, 0, 0.6);
+      const experience = this.getExperienceFactor(opponent);
+      const chance = clamp(baseIntercept * closeness * (0.6 + timing * 0.4) * multiplier * experience, 0, 0.6);
       if (!best || chance > best.chance) {
         best = { player: opponent, chance };
       }
@@ -956,6 +962,11 @@ export class RulesAgent {
       const handling = getAttribute(player, 'handling');
       const jumping = getAttribute(player, 'jumping_reach');
       let skill = average(aerial, command, handling, jumping);
+      const weightBoost = clamp(1 + (player.weightKg - 75) * 0.003, 0.9, 1.1);
+      let ageFactor = 1;
+      if (player.age < 22) ageFactor = 0.96 + (player.age - 18) * 0.01;
+      if (player.age > 30) ageFactor = 1 - (player.age - 30) * 0.006;
+      skill *= weightBoost * clamp(ageFactor, 0.9, 1.02);
       skill *= playstyleMultiplier(player, 'cross_claimer', 1.08, 1.12);
       skill *= playstyleMultiplier(player, 'far_reach', 1.05, 1.08);
       return clamp(skill, 5, 140);
@@ -968,8 +979,13 @@ export class RulesAgent {
     const aggression = getAttribute(player, 'aggression');
     const height = player.heightCm;
     const heightBoost = clamp((height - 170) / 40, 0, 0.35);
+    const weightBoost = clamp(1 + (player.weightKg - 75) * 0.003, 0.9, 1.1);
+    let ageFactor = 1;
+    if (player.age < 22) ageFactor = 0.96 + (player.age - 18) * 0.01;
+    if (player.age > 30) ageFactor = 1 - (player.age - 30) * 0.006;
+    ageFactor = clamp(ageFactor, 0.9, 1.02);
     let skill = average(jumping, heading, strength, bravery, aggression);
-    skill *= 1 + heightBoost;
+    skill *= (1 + heightBoost) * weightBoost * ageFactor;
 
     skill *= playstyleMultiplier(player, 'aerial', 1.08, 1.12);
     skill *= playstyleMultiplier(player, 'power_header', 1.08, 1.12);
@@ -1018,6 +1034,7 @@ export class RulesAgent {
     const composure = getAttribute(receiver, 'composure');
     const balance = getAttribute(receiver, 'balance');
     const fatigue = clamp(receiver.fatigue ?? 0, 0, 1);
+    const experience = this.getExperienceFactor(receiver);
 
     let chance = 0.04;
     chance += (1 - (firstTouch + technique) / 200) * 0.08;
@@ -1042,6 +1059,7 @@ export class RulesAgent {
       chance *= receiver.playstylesPlus?.includes('gamechanger') ? 0.88 : 0.93;
     }
 
+    chance *= 1 / experience;
     return clamp(chance, 0.02, 0.22);
   }
 
@@ -1482,5 +1500,15 @@ export class RulesAgent {
 
   private resolveTeamName(state: SimulationState, teamId: string) {
     return state.teams.find((team) => team.id === teamId)?.name ?? teamId;
+  }
+
+  private getExperienceFactor(player: PlayerState) {
+    const age = player.age;
+    if (age <= 18) return 0.95;
+    if (age <= 22) return 0.95 + (age - 18) * 0.0125;
+    if (age <= 28) return 1 + (age - 22) * 0.004;
+    if (age <= 33) return 1.024 + (age - 28) * 0.006;
+    const decline = 1.05 - (age - 33) * 0.01;
+    return clamp(decline, 0.92, 1.06);
   }
 }

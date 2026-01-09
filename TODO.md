@@ -110,3 +110,9 @@ This file outlines the implementation tasks required to deliver the first iterat
 - Added unit tests for tactical, event, decision, and set-piece engine modules.
 - Added a CLI validator script for CSV/JSON imports.
 - Made age/height/weight/foot/nationality mandatory in imports and applied age/weight effects to fatigue/injury.
+- Added physical contest weighting for tackles and aerial duels using age/height/weight/strength/balance.
+- Updated import UI copy for required fields and clarified optional playstyles/traits in docs.
+- Added calibration targets and a short-run realism sanity test.
+- Added age-based experience modifiers to pass/shot accuracy, pressure handling, and interceptions.
+- Added a full-match calibration test with broad ranges for similar-quality teams.
+- Added an on-demand full-match calibration runner (`npm run calibrate:full`).
