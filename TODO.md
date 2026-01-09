@@ -75,8 +75,7 @@ This file outlines the implementation tasks required to deliver the first iterat
 ## Backlog (Prioritized)
 
 1. **Refactor GameEngineAgent**
- - Split into tactical, event, set-piece, and decision modules.
- - Add unit tests for each module to prevent regressions.
+ - Add unit tests for each module (tactical, event, set-piece, decision) to prevent regressions.
 
 ## Enhancements (Optional)
 
@@ -108,3 +107,4 @@ This file outlines the implementation tasks required to deliver the first iterat
 - Added contextual commentary with phrase libraries and late-game intensity cues.
 - Implemented AI-only opponent adaptation with optional assist tactics for human teams.
 - Added keyboard shortcuts, ARIA labels, tooltips, and stats comparison bars for accessibility.
+- Refactored GameEngineAgent into tactical, event, decision, and set-piece modules for maintainability.
