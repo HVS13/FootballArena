@@ -34,7 +34,7 @@ Key features include:
 **Scope (in):**
 - Local hotseat only (two users on one device).
 - Player import with validation and 0-100 scaling.
-- Player profiles include shirt number, age, height, weight, foot ratings, nationality, and traits.
+- Player profiles include shirt number, age, height, weight, foot ratings, nationality, and traits (age/height/weight/foot/nationality required).
 - FM26 team instructions, roles, and duties available in UI.
 - EA FC 26 PlayStyles available and applied to gameplay (passing, shooting, dribbling, physicality).
 - Match environment configuration available in setup (weather, wind, temperature, pitch condition, presets, randomize).
@@ -115,6 +115,16 @@ npm test
 npm run build
 npm run preview
 ```
+
+## Validate Imports (Optional)
+
+You can validate a CSV or JSON import file before loading it in the UI.
+
+```bash
+npm run validate:import -- "C:\path\to\your\team.json"
+```
+
+This checks required fields, all attributes, and that playstyles/traits match the reference lists.
 
 ## Reference Data Updates
 

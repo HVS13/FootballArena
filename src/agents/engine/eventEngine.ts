@@ -110,14 +110,20 @@ export const updateFatigue = (context: EventContext, dt: number) => {
     const behavior = context.getRoleBehavior(player);
     const instructions = context.getTeamInstructions(player.teamId);
     const intensity = getFatigueIntensity(behavior, instructions);
+    const age = player.age;
+    const weightKg = player.weightKg;
 
     const staminaFactor = 1 + (1 - stamina / 100) * 0.9;
     const fitnessFactor = 1 + (1 - naturalFitness / 100) * 0.6;
     const workRateFactor = 1 + (workRate / 100) * 0.25;
     const timeScale = 0.6 + matchProgress * 0.7;
+    const ageDrain = age >= 30 ? 1 + (age - 30) * 0.015 : age <= 22 ? 1 - (22 - age) * 0.008 : 1;
+    const weightDrain = clamp(1 + (weightKg - 75) * 0.006, 0.9, 1.18);
+    const bodyFactor = clamp(ageDrain, 0.85, 1.25) * weightDrain;
 
     let drain =
       baseDrain * intensity * staminaFactor * fitnessFactor * workRateFactor * envFatigue * importance * timeScale;
+    drain *= bodyFactor;
 
     const teamGoals = stats.byTeam[player.teamId]?.goals ?? 0;
     const opponentId = context.getOpponentTeamId(player.teamId);
@@ -131,10 +137,15 @@ export const updateFatigue = (context: EventContext, dt: number) => {
 
     let delta = drain * dt;
     if (lowIntensityPhase) {
+      const ageRecovery =
+        age <= 22 ? 1 + (22 - age) * 0.01 : age >= 30 ? 1 - (age - 30) * 0.015 : 1;
+      const weightRecovery = clamp(1 - (weightKg - 75) * 0.005, 0.85, 1.05);
       const recovery =
         baseRecovery *
         (1 + (naturalFitness / 100) * 0.4) *
-        (1 - (player.fatigue ?? 0));
+        (1 - (player.fatigue ?? 0)) *
+        clamp(ageRecovery, 0.8, 1.1) *
+        weightRecovery;
       delta -= recovery * dt;
     }
 
@@ -394,12 +405,17 @@ export const updateInjuries = (context: EventContext, dt: number) => {
     const aggression = context.getAttribute(player, 'aggression');
     const bravery = context.getAttribute(player, 'bravery');
     const instructions = context.getTeamInstructions(player.teamId);
+    const age = player.age;
+    const weightKg = player.weightKg;
 
     const fatigueLoad = clamp(player.fatigue ?? 0, 0, 1);
     const fatigue = (1 - stamina / 100) * (0.3 + matchProgress * 0.7) + fatigueLoad * 0.5;
     const fitnessPenalty = (1 - naturalFitness / 100) * 0.6;
     const intensity = getInjuryIntensity(instructions);
     const contactFactor = 1 + (aggression / 100) * 0.15;
+    const ageRisk = age >= 30 ? 1 + (age - 30) * 0.035 : age <= 22 ? 1 - (22 - age) * 0.02 : 1;
+    const weightRisk = 1 + Math.abs(weightKg - 75) * 0.008;
+    const bodyRisk = clamp(ageRisk, 0.85, 1.5) * clamp(weightRisk, 0.9, 1.35);
 
     const risk =
       baseRate *
@@ -408,7 +424,8 @@ export const updateInjuries = (context: EventContext, dt: number) => {
       intensity *
       contactFactor *
       envFatigue *
-      importance;
+      importance *
+      bodyRisk;
 
     if (Math.random() < risk * dt) {
       const severity = clamp(

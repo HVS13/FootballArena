@@ -6,22 +6,22 @@ This guide lists every supported import column, the allowed values, and the avai
 
 - `name`: Player display name (string).
 - `positions`: One or more positions (string list). Separate values with `|`, `;`, or `/` in CSV. No enforced list; use your preferred naming.
-- **All Football Manager attributes** listed below (1-20 or 0-100; values on 1-20 scale are converted to 0-100).
-
-## Optional Columns / Fields
-
-- `team`: Team name (string). If omitted, defaults to `Team A`.
-- `id`: Player id (string).
-- `shirtNo`: 1-99 (integer).
 - `age`: 14-45 (number).
 - `heightCm`: 140-220 (number).
 - `weightKg`: 45-120 (number).
 - `leftFoot`: 0-100 or 1-20 (scaled to 0-100).
 - `rightFoot`: 0-100 or 1-20 (scaled to 0-100).
 - `nationality`: free-form string.
-- `playstyles`: EA FC PlayStyle names or ids, separated by `|`, `;`, or `/`.
-- `playstylesPlus`: EA FC PlayStyle+ names or ids, separated by `|`, `;`, or `/`.
-- `playerTraits`: Football Manager Player Traits, separated by `|`, `;`, or `/`.
+- **All Football Manager attributes** listed below (1-20 or 0-100; values on 1-20 scale are converted to 0-100).
+
+## Additional Columns / Fields
+
+- `team`: Team name (string). Defaults to `Team A` if omitted.
+- `id`: Player id (string).
+- `shirtNo`: 1-99 (integer).
+- `playstyles`: EA FC PlayStyle names or ids, separated by `|`, `;`, or `/`. Omit or leave blank if none.
+- `playstylesPlus`: EA FC PlayStyle+ names or ids, separated by `|`, `;`, or `/`. Omit or leave blank if none.
+- `playerTraits`: Football Manager Player Traits, separated by `|`, `;`, or `/`. Omit or leave blank if none.
 
 ## Accepted Column Aliases
 

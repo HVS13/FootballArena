@@ -56,7 +56,13 @@ describe('DataImportAgent', () => {
           name: 'Jordan Tester',
           positions: 'CM',
           ...buildAttributes(12),
-          playstyles: 'Unknown Style'
+          playstyles: 'Unknown Style',
+          age: 22,
+          heightCm: 178,
+          weightKg: 70,
+          leftFoot: 14,
+          rightFoot: 16,
+          nationality: 'England'
         }
       ]
     };
@@ -69,9 +75,42 @@ describe('DataImportAgent', () => {
 
   test('imports CSV across multiple teams', () => {
     const agent = new DataImportAgent();
-    const headers = ['team', 'name', 'positions', ...attributeIds, 'leftFoot', 'rightFoot'];
-    const rowValues = ['Team A', 'Sam Forward', 'ST', ...attributeIds.map(() => '11'), '14', '17'];
-    const rowValues2 = ['Team B', 'Leo Mid', 'CM', ...attributeIds.map(() => '9'), '12', '15'];
+    const headers = [
+      'team',
+      'name',
+      'positions',
+      'age',
+      'heightCm',
+      'weightKg',
+      'leftFoot',
+      'rightFoot',
+      'nationality',
+      ...attributeIds
+    ];
+    const rowValues = [
+      'Team A',
+      'Sam Forward',
+      'ST',
+      '24',
+      '182',
+      '76',
+      '14',
+      '17',
+      'Brazil',
+      ...attributeIds.map(() => '11')
+    ];
+    const rowValues2 = [
+      'Team B',
+      'Leo Mid',
+      'CM',
+      '27',
+      '176',
+      '70',
+      '12',
+      '15',
+      'Argentina',
+      ...attributeIds.map(() => '9')
+    ];
     const csv = `${headers.join(',')}\n${rowValues.join(',')}\n${rowValues2.join(',')}`;
 
     const result = agent.importText(csv, 'csv');

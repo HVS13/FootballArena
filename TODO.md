@@ -74,8 +74,7 @@ This file outlines the implementation tasks required to deliver the first iterat
 
 ## Backlog (Prioritized)
 
-1. **Refactor GameEngineAgent**
- - Add unit tests for each module (tactical, event, set-piece, decision) to prevent regressions.
+- None right now. Add new items as priorities emerge.
 
 ## Enhancements (Optional)
 
@@ -108,3 +107,6 @@ This file outlines the implementation tasks required to deliver the first iterat
 - Implemented AI-only opponent adaptation with optional assist tactics for human teams.
 - Added keyboard shortcuts, ARIA labels, tooltips, and stats comparison bars for accessibility.
 - Refactored GameEngineAgent into tactical, event, decision, and set-piece modules for maintainability.
+- Added unit tests for tactical, event, decision, and set-piece engine modules.
+- Added a CLI validator script for CSV/JSON imports.
+- Made age/height/weight/foot/nationality mandatory in imports and applied age/weight effects to fatigue/injury.

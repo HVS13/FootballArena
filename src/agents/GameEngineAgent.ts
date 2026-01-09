@@ -103,12 +103,12 @@ type LoopState = {
 type PlayerMeta = {
   name: string;
   shirtNo?: number;
-  age?: number;
-  heightCm?: number;
-  weightKg?: number;
-  leftFoot?: number;
-  rightFoot?: number;
-  nationality?: string;
+  age: number;
+  heightCm: number;
+  weightKg: number;
+  leftFoot: number;
+  rightFoot: number;
+  nationality: string;
   attributes?: PlayerAttributes;
   playstyles?: string[];
   playstylesPlus?: string[];
@@ -216,6 +216,7 @@ const buildPlayers = (teamId: string, pitch: PitchDimensions, isHome: boolean) =
       weightKg: 75,
       leftFoot: 50,
       rightFoot: 50,
+      nationality: 'Unknown',
       roleId: null,
       dutyId: null,
       attributes: {},
@@ -283,6 +284,12 @@ const buildStateFromSetup = (pitch: PitchDimensions, setup: TeamSetupState): Sim
       const rosterPlayer =
         team.roster.find((player) => player.id === slot.playerId) || team.roster[index] || null;
       const name = rosterPlayer?.name ?? `${team.name} Player ${index + 1}`;
+      const age = rosterPlayer?.age ?? 24;
+      const heightCm = rosterPlayer?.heightCm ?? 180;
+      const weightKg = rosterPlayer?.weightKg ?? 75;
+      const leftFoot = rosterPlayer?.leftFoot ?? 50;
+      const rightFoot = rosterPlayer?.rightFoot ?? 50;
+      const nationality = rosterPlayer?.nationality ?? 'Unknown';
       const position = {
         x: slot.position.x * pitch.width,
         y: slot.position.y * pitch.height
@@ -292,12 +299,12 @@ const buildStateFromSetup = (pitch: PitchDimensions, setup: TeamSetupState): Sim
         id: rosterPlayer?.id ?? `${team.id}-${slot.id}`,
         name,
         shirtNo: rosterPlayer?.shirtNo,
-        age: rosterPlayer?.age,
-        heightCm: rosterPlayer?.heightCm,
-        weightKg: rosterPlayer?.weightKg,
-        leftFoot: rosterPlayer?.leftFoot,
-        rightFoot: rosterPlayer?.rightFoot,
-        nationality: rosterPlayer?.nationality,
+        age,
+        heightCm,
+        weightKg,
+        leftFoot,
+        rightFoot,
+        nationality,
         roleId: slot.roleId ?? null,
         dutyId: slot.dutyId ?? null,
         teamId: team.id,
@@ -343,12 +350,12 @@ const createRosterMetaMap = (setup: TeamSetupState | null, state: SimulationStat
         meta.set(player.id, {
           name: player.name,
           shirtNo: player.shirtNo,
-          age: player.age,
-          heightCm: player.heightCm,
-          weightKg: player.weightKg,
-          leftFoot: player.leftFoot,
-          rightFoot: player.rightFoot,
-          nationality: player.nationality,
+          age: player.age ?? 24,
+          heightCm: player.heightCm ?? 180,
+          weightKg: player.weightKg ?? 75,
+          leftFoot: player.leftFoot ?? 50,
+          rightFoot: player.rightFoot ?? 50,
+          nationality: player.nationality ?? 'Unknown',
           attributes: player.attributes,
           playstyles: player.playstyles ?? [],
           playstylesPlus: player.playstylesPlus ?? [],

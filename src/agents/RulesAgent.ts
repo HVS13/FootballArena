@@ -73,8 +73,8 @@ const playstyleBonus = (player: PlayerState, id: string, standard: number, plus:
 };
 
 const getFootBalance = (player: PlayerState) => {
-  const left = player.leftFoot ?? 50;
-  const right = player.rightFoot ?? 50;
+  const left = player.leftFoot;
+  const right = player.rightFoot;
   const high = Math.max(left, right, 1);
   const low = Math.min(left, right);
   return low / high;
@@ -966,7 +966,7 @@ export class RulesAgent {
     const strength = getAttribute(player, 'strength');
     const bravery = getAttribute(player, 'bravery');
     const aggression = getAttribute(player, 'aggression');
-    const height = player.heightCm ?? 180;
+    const height = player.heightCm;
     const heightBoost = clamp((height - 170) / 40, 0, 0.35);
     let skill = average(jumping, heading, strength, bravery, aggression);
     skill *= 1 + heightBoost;

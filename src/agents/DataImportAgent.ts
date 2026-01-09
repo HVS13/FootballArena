@@ -185,6 +185,38 @@ const parseOptionalNumber = (
   return finalValue;
 };
 
+const parseRequiredNumber = (
+  rawValue: unknown,
+  errors: ImportError[],
+  row: number | undefined,
+  field: string,
+  options: NumberParseOptions = {}
+) => {
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    errors.push({ row, field, message: 'Value is required.' });
+    return undefined;
+  }
+  return parseOptionalNumber(rawValue, errors, row, field, options);
+};
+
+const parseRequiredString = (
+  rawValue: unknown,
+  errors: ImportError[],
+  row: number | undefined,
+  field: string
+) => {
+  if (rawValue === undefined || rawValue === null) {
+    errors.push({ row, field, message: 'Value is required.' });
+    return undefined;
+  }
+  const value = String(rawValue).trim();
+  if (!value) {
+    errors.push({ row, field, message: 'Value is required.' });
+    return undefined;
+  }
+  return value;
+};
+
 const parsePlaystyleList = (
   raw: unknown,
   errors: ImportError[],
@@ -292,15 +324,15 @@ const buildPlayer = (raw: Record<string, unknown>, errors: ImportError[], row?: 
     { min: 1, max: 99, integer: true }
   );
 
-  const age = parseOptionalNumber(getRawValue(raw, ['age']), errors, row, 'age', { min: 14, max: 45 });
-  const heightCm = parseOptionalNumber(
+  const age = parseRequiredNumber(getRawValue(raw, ['age']), errors, row, 'age', { min: 14, max: 45 });
+  const heightCm = parseRequiredNumber(
     getRawValue(raw, ['heightCm', 'height_cm', 'height', 'Height', 'height (cm)']),
     errors,
     row,
     'heightCm',
     { min: 140, max: 220 }
   );
-  const weightKg = parseOptionalNumber(
+  const weightKg = parseRequiredNumber(
     getRawValue(raw, ['weightKg', 'weight_kg', 'weight', 'Weight', 'weight (kg)']),
     errors,
     row,
@@ -308,14 +340,14 @@ const buildPlayer = (raw: Record<string, unknown>, errors: ImportError[], row?: 
     { min: 45, max: 120 }
   );
 
-  const leftFoot = parseOptionalNumber(
+  const leftFoot = parseRequiredNumber(
     getRawValue(raw, ['leftFoot', 'left_foot', 'left foot', 'Left Foot', 'leftfoot']),
     errors,
     row,
     'leftFoot',
     { min: 0, max: 100, scale: true }
   );
-  const rightFoot = parseOptionalNumber(
+  const rightFoot = parseRequiredNumber(
     getRawValue(raw, ['rightFoot', 'right_foot', 'right foot', 'Right Foot', 'rightfoot']),
     errors,
     row,
@@ -323,10 +355,24 @@ const buildPlayer = (raw: Record<string, unknown>, errors: ImportError[], row?: 
     { min: 0, max: 100, scale: true }
   );
 
-  const nationalityRaw = getRawValue(raw, ['nationality', 'nation', 'country']);
-  const nationality = nationalityRaw ? String(nationalityRaw).trim() : undefined;
+  const nationality = parseRequiredString(
+    getRawValue(raw, ['nationality', 'nation', 'country']),
+    errors,
+    row,
+    'nationality'
+  );
 
-  if (!name || !positions.length || !isComplete) {
+  if (
+    !name ||
+    !positions.length ||
+    !isComplete ||
+    age === undefined ||
+    heightCm === undefined ||
+    weightKg === undefined ||
+    leftFoot === undefined ||
+    rightFoot === undefined ||
+    nationality === undefined
+  ) {
     return null;
   }
 

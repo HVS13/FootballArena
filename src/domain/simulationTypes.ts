@@ -21,12 +21,12 @@ export type PlayerState = {
   id: string;
   name: string;
   shirtNo?: number;
-  age?: number;
-  heightCm?: number;
-  weightKg?: number;
-  leftFoot?: number;
-  rightFoot?: number;
-  nationality?: string;
+  age: number;
+  heightCm: number;
+  weightKg: number;
+  leftFoot: number;
+  rightFoot: number;
+  nationality: string;
   roleId?: string | null;
   dutyId?: string | null;
   teamId: string;

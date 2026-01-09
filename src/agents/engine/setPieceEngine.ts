@@ -134,7 +134,7 @@ export const getAerialScore = (context: SetPieceContext, player: SimPlayer) => {
   const heading = context.getAttribute(player, 'heading');
   const strength = context.getAttribute(player, 'strength');
   const bravery = context.getAttribute(player, 'bravery');
-  const height = player.heightCm ?? 180;
+  const height = player.heightCm;
   const heightBoost = clamp((height - 170) / 40, 0, 0.35);
   let score = (jumping + heading + strength + bravery) / 4;
   score *= 1 + heightBoost;

@@ -68,9 +68,9 @@ export class PhysicsAgent {
       const stamina = getAttribute(player, 'stamina');
       const adaptability = getAttribute(player, 'adaptability');
       const injuryProneness = getAttribute(player, 'injury_proneness');
-      const age = player.age ?? 24;
-      const heightCm = player.heightCm ?? 180;
-      const weightKg = player.weightKg ?? 75;
+      const age = player.age;
+      const heightCm = player.heightCm;
+      const weightKg = player.weightKg;
 
       let maxSpeed = (4 + (pace / 100) * 4) * env.speedFactor;
       let accel = (8 + (acceleration / 100) * 8) * env.accelFactor;

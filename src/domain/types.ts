@@ -6,12 +6,12 @@ export type PlayerImport = {
   id?: string;
   name: string;
   shirtNo?: number;
-  age?: number;
-  heightCm?: number;
-  weightKg?: number;
-  leftFoot?: number;
-  rightFoot?: number;
-  nationality?: string;
+  age: number;
+  heightCm: number;
+  weightKg: number;
+  leftFoot: number;
+  rightFoot: number;
+  nationality: string;
   positions: string[];
   attributes: PlayerAttributes;
   playstyles?: string[];

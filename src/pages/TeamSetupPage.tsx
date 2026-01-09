@@ -110,6 +110,12 @@ const createPlaceholderRoster = (count: number, prefix: string) => {
   return Array.from({ length: count }, (_, index) => ({
     id: `${prefix}-${index + 1}`,
     name: `${prefix} Player ${index + 1}`,
+    age: 24,
+    heightCm: 180,
+    weightKg: 75,
+    leftFoot: 50,
+    rightFoot: 50,
+    nationality: 'Unknown',
     positions: [],
     attributes: {},
     playstyles: [],
