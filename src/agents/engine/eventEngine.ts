@@ -89,11 +89,6 @@ export const getInitialMorale = (context: EventContext, attributes?: PlayerAttri
 };
 
 export const updateFatigue = (context: EventContext, dt: number) => {
-  if (!context.halftimeRecovered && context.state.time >= 2700) {
-    applyHalftimeRecovery(context);
-    context.setHalftimeRecovered(true);
-  }
-
   const matchProgress = Math.min(context.state.time / 5400, 1);
   const importance = context.matchImportance;
   const envFatigue = getEnvironmentFatigueFactor(context.environment);

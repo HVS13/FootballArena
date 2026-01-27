@@ -54,11 +54,10 @@ This file outlines the implementation tasks required to deliver the first iterat
  - Provide an API for retrieving real-time statistics for display.
 
 8. **Build UIAgent**
- - Render the 2D pitch using HTML5 Canvas or an equivalent library.
- - Represent players as coloured circles with foot indicators.
- - Display match commentary and statistics below the pitch.
+ - Render a text-based match view focused on commentary, team overview panels, and live stats.
+ - Display match commentary and statistics in the match view.
  - Expose controls for match speed and substitutions; integrate with PlaybackAgent.
- - Add match HUD overlays for fatigue, morale, injuries, and tactical role/duty changes.
+ - Add team overview panels for fatigue, morale, injuries, and tactical role/duty changes.
 
 9. **Implement PlaybackAgent**
  - Connect UI controls to simulation speed adjustments.
@@ -74,7 +73,7 @@ This file outlines the implementation tasks required to deliver the first iterat
 
 ## Backlog (Prioritized)
 
-- None right now. Add new items as priorities emerge.
+- Reintroduce the 2D pitch view once the commentary-first match experience is stable.
 
 ## Enhancements (Optional)
 
@@ -92,7 +91,7 @@ This file outlines the implementation tasks required to deliver the first iterat
 - Expanded match statistics (pass accuracy, shots on/off target, xG, corners, offsides, tackles, interceptions, saves).
 - Added Set Piece Wizard settings in team setup to guide marking, delivery, and transitions.
 - Added tactical presets for common formations with roles/duties and instruction randomization.
-- Added kit color controls and updated pitch/player rendering styling.
+- Added kit color controls for team identity across match UI elements.
 - Expanded formation library and tactical presets with historic systems (WM, Pyramid, 4-2-4).
 - Refreshed Team Setup UI into an FM-style tactics board with pitch, lineup table, and instruction cards.
 - Enabled per-team formation selection in Team Setup.
@@ -116,3 +115,4 @@ This file outlines the implementation tasks required to deliver the first iterat
 - Added age-based experience modifiers to pass/shot accuracy, pressure handling, and interceptions.
 - Added a full-match calibration test with broad ranges for similar-quality teams.
 - Added an on-demand full-match calibration runner (`npm run calibrate:full`).
+- Expanded commentary with minute-by-minute summaries and action-style cues (shot/pass types, keeper actions, tricks).

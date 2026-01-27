@@ -78,15 +78,15 @@ This project organizes the simulation game into distinct "agents." Each agent en
 * **Responsibilities:**
  - Record events such as shots, passes, tackles, interceptions, fouls, yellow/red cards, offsides, corners, and goals.
  - Generate per-player and team statistics (possession percentages, pass accuracy, shot accuracy, xG, saves, etc.).
- - Provide real-time updates to the UIAgent for display beneath the 2D pitch view.
+ - Provide real-time updates to the UIAgent for display in the text-based match view.
 * **Interactions:** Receives updates from GameEngineAgent and PhysicsAgent; sends aggregated metrics to UIAgent.
 
 ## UIAgent
 
 * **Purpose:** Handles all visual and interactive elements of the web application.
 * **Responsibilities:**
- - Render a 2D pitch with circular player icons and foot indicators as per Football Manager style.
- - Display match commentary text and real-time statistics below the pitch.
+ - Render a text-based match view (commentary + live stats) instead of the 2D pitch for now.
+ - Display match commentary text and real-time statistics in the match view.
  - Allow users to change match speed, pause/resume the game, and perform substitutions.
  - Provide drag-and-drop formation tools via TeamSetupAgent.
 * **Interactions:** Receives updates from GameEngineAgent, StatsAgent, CommentaryAgent, and TeamSetupAgent. Sends user actions (speed changes, substitutions) to PlaybackAgent and GameEngineAgent.
@@ -105,6 +105,7 @@ This project organizes the simulation game into distinct "agents." Each agent en
 * **Responsibilities:**
  - Interpret events from GameEngineAgent and RulesAgent to produce play-by-play narrative.
  - Use phrase libraries and context tags (late-game, equalizers, big chances) for varied commentary.
+ - Surface action-style cues (shot/pass types, keeper actions, tricks) driven by playstyles and traits.
  - Maintain a buffer of recent commentary lines for display by UIAgent.
 * **Interactions:** Receives event notifications from GameEngineAgent and rule outcomes from RulesAgent; outputs commentary messages to UIAgent.
 

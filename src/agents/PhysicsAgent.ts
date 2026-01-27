@@ -157,7 +157,6 @@ export class PhysicsAgent {
   private updateBall(state: SimulationState, dt: number) {
     const env = this.getEnvironmentModifiers();
     const friction = env.friction;
-    const bounce = env.bounce;
 
     state.ball.velocity.x += env.wind.x * dt;
     state.ball.velocity.y += env.wind.y * dt;
@@ -165,22 +164,13 @@ export class PhysicsAgent {
     state.ball.position.x += state.ball.velocity.x * dt;
     state.ball.position.y += state.ball.velocity.y * dt;
 
-    if (state.ball.position.x <= state.ball.radius || state.ball.position.x >= this.pitchWidth - state.ball.radius) {
-      state.ball.velocity.x *= -bounce;
-      state.ball.position.x = clamp(
-        state.ball.position.x,
-        state.ball.radius,
-        this.pitchWidth - state.ball.radius
-      );
-    }
-
-    if (state.ball.position.y <= state.ball.radius || state.ball.position.y >= this.pitchHeight - state.ball.radius) {
-      state.ball.velocity.y *= -bounce;
-      state.ball.position.y = clamp(
-        state.ball.position.y,
-        state.ball.radius,
-        this.pitchHeight - state.ball.radius
-      );
+    const outX = state.ball.position.x < 0 || state.ball.position.x > this.pitchWidth;
+    const outY = state.ball.position.y < 0 || state.ball.position.y > this.pitchHeight;
+    if (outX || outY) {
+      state.ball.velocity.x *= 0.9;
+      state.ball.velocity.y *= 0.9;
+      state.ball.position.x = clamp(state.ball.position.x, -5, this.pitchWidth + 5);
+      state.ball.position.y = clamp(state.ball.position.y, -5, this.pitchHeight + 5);
     }
 
     state.ball.velocity.x *= friction;

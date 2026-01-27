@@ -91,6 +91,35 @@ body {
   gap: 12px;
 }
 
+.match-phase {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.2);
+  color: #bbf7d0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.match-stoppage {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(248, 113, 113, 0.2);
+  color: #fecaca;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.match-final {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.15);
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
 .team-tabs {
   display: flex;
   gap: 12px;
@@ -132,14 +161,9 @@ body {
 }
 
 .match-hud {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
-  pointer-events: none;
 }
 
 .hud-card {
@@ -147,7 +171,7 @@ body {
   color: #f8fafc;
   border-radius: 12px;
   padding: 10px 12px;
-  width: min(45%, 340px);
+  width: 100%;
   box-shadow: 0 12px 26px rgba(3, 7, 18, 0.6);
   font-size: 12px;
 }
@@ -191,11 +215,39 @@ body {
 
 @media (max-width: 768px) {
   .match-hud {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
+}
 
-  .hud-card {
-    width: 100%;
+.match-text-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(320px, 1.2fr);
+  gap: 16px;
+}
+
+.match-column {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 240px;
+}
+
+.match-column-header {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+@media (max-width: 960px) {
+  .match-text-grid {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -10,7 +10,7 @@ Key features include:
 * **Comprehensive player data:** Users can import custom player lists with full attribute sets (technical, mental, physical, goalkeeping, hidden) on a 0-100 scale, plus player traits and physical profiles.
 * **Detailed tactics:** Football Manager-style team instructions, player roles, and duties now shape positioning, pressing, and decision biases (passing, carrying, shooting).
 * **Per-team formations:** Each team can choose and edit its own formation independently.
-* **2D match view:** A top-down pitch with circular player icons (and foot indicators) similar to Football Manager. Live commentary and real-time statistics are displayed below the pitch.
+* **Text-only match view:** Live commentary and real-time stats are presented without the 2D pitch while simulation accuracy is prioritized.
 * **Kit colors:** Teams can set primary and secondary kit colors that drive player token rendering.
 * **FM-style tactics board:** Formation pitch, lineup table, and instruction cards mirror Football Manager's layout.
 * **Dual shape previews:** In-possession and out-of-possession shapes are shown side by side with labeled player tokens.
@@ -23,10 +23,10 @@ Key features include:
 * **Match environment effects:** Weather, wind, temperature, and pitch conditions influence ball physics and player fatigue.
 * **Player traits:** FM player preferred moves modify decisions like carrying, passing, and shooting.
 * **Match importance, morale, and fatigue:** Match importance scales pressure and morale swings; morale and fatigue evolve over time, impacting decisions and movement, with injuries introducing temporary limitations and age-based experience effects.
-* **Match HUD overlays:** On-pitch overlays summarize fatigue, morale, injuries, and discipline per team.
+* **Team overview panels:** Summaries of fatigue, morale, injuries, and discipline per team in the match view.
 * **Expanded match stats:** Pass accuracy, shots on/off target, xG, corners, offsides, tackles, interceptions, and saves.
 * **Set-piece wizard:** A six-question setup to shape marking, delivery targets, and numbers committed.
-* **Contextual commentary:** Phrase libraries with late-game intensity cues and varied play-by-play lines.
+* **Contextual commentary:** Minute-by-minute narration plus action-style cues (finesse shots, whipped crosses, keeper parries).
 * **AI control + assist tactics:** Teams can be AI-controlled, and human teams can enable AI tactical assistance.
 
 ## v0.1 Scope and Acceptance Criteria
@@ -41,13 +41,13 @@ Key features include:
 - Match importance, morale shifts, fatigue accumulation, and basic injury knocks impacting performance.
 - Structured set pieces (corners, free kicks, throw-ins, penalties, kick-offs) with advantage/card discipline.
 - Off-ball movement and pass-to-space behavior influenced by roles, traits, and instructions.
-- 2D top-down pitch with players as circles + foot indicator, officials visible.
+- Text-based match view with live commentary, team overview, and real-time stats.
 - Kit color picker for primary/secondary team colors.
-- Real-time simulation with fixed-tick engine, rendering at 60fps.
+- Real-time simulation with fixed-tick engine and frequent UI updates.
 - Speed controls x2/x4/x8/x16 and pause/resume.
 - Substitutions with official limits (5 subs in 3 windows + halftime).
 - Live commentary feed and live match stats panel.
-- Match HUD overlays for fatigue, morale, injuries, and cards.
+- Team overview panels for fatigue, morale, injuries, and cards.
 - Expanded stats (pass accuracy, shots on/off target, xG, corners, offsides, tackles, interceptions, saves).
 - Set-piece wizard for selecting marking, delivery, and transition preferences.
 - Tactical presets (popular formations + instructions + roles/duties), plus randomize tactics/instructions.

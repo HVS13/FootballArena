@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GameEngineAgent, RestartInfo, SubstitutionStatus } from '../agents/GameEngineAgent';
-import PitchCanvas from '../components/PitchCanvas';
+import { GameEngineAgent, MatchStatus, RestartInfo, SubstitutionStatus } from '../agents/GameEngineAgent';
 import { CommentaryLine, MatchStats } from '../domain/matchTypes';
 import { RenderState, TeamState } from '../domain/simulationTypes';
 import { TeamSetupState } from '../domain/teamSetupTypes';
@@ -90,6 +89,7 @@ const MatchPage = () => {
   const [commentary, setCommentary] = useState<CommentaryLine[]>([]);
   const [subStatus, setSubStatus] = useState<SubstitutionStatus | null>(null);
   const [restartInfo, setRestartInfo] = useState<RestartInfo | null>(null);
+  const [matchStatus, setMatchStatus] = useState<MatchStatus | null>(null);
   const [subSelections, setSubSelections] = useState<Record<string, SubSelection>>({});
   const [subErrors, setSubErrors] = useState<Record<string, string>>({});
   const engineRef = useRef<GameEngineAgent | null>(null);
@@ -225,11 +225,12 @@ const MatchPage = () => {
   useEffect(() => {
     const engine = new GameEngineAgent({
       onRender: setRenderState,
-      onMatchUpdate: (stats, lines, restart) => {
+      onMatchUpdate: (stats, lines, restart, status) => {
         setMatchStats(stats);
         setCommentary(lines);
         setSubStatus(engine.getSubstitutionStatus());
         setRestartInfo(restart);
+        setMatchStatus(status);
       },
       teamSetup: initialSetupRef.current ?? undefined,
       environment: initialEnvironmentRef.current
@@ -467,6 +468,35 @@ const MatchPage = () => {
     ];
   };
 
+  const phaseLabel = useMemo(() => {
+    if (!matchStatus) return 'Kick-off';
+    switch (matchStatus.phase) {
+      case 'first_half':
+        return '1st Half';
+      case 'second_half':
+        return '2nd Half';
+      case 'half_time': {
+        const remaining = Math.ceil(matchStatus.halftimeRemaining ?? 0);
+        return `Half-time (${remaining}s)`;
+      }
+      case 'full_time':
+        return 'Full-time';
+      default:
+        return 'Kick-off';
+    }
+  }, [matchStatus]);
+
+  const controlsDisabled = matchStatus?.phase === 'full_time';
+
+  const stoppageLabel = useMemo(() => {
+    if (!matchStatus) return null;
+    const minutes = Math.round(matchStatus.stoppageSeconds / 60);
+    if (minutes <= 0) return null;
+    const isSecondHalf = matchStatus.half === 2;
+    const halfBase = isSecondHalf ? 90 : 45;
+    return `+${minutes} (${halfBase}+${minutes})`;
+  }, [matchStatus]);
+
   return (
     <div className="page-grid">
       <section className="card">
@@ -479,54 +509,80 @@ const MatchPage = () => {
         <div className="controls-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <div role="status" aria-live="polite">
             Match Time: {renderState ? formatClock(renderState.time) : '00:00'}
+            <span className="match-phase">{phaseLabel}</span>
           </div>
-          <div aria-live="polite">Speed: x{state.simSpeed}</div>
+          <div aria-live="polite">
+            Speed: x{state.simSpeed}
+            {stoppageLabel && <span className="match-stoppage">Stoppage {stoppageLabel}</span>}
+          </div>
         </div>
+        {controlsDisabled && (
+          <div className="match-final" role="status" aria-live="polite">
+            Match finished. Full-time whistle blown.
+          </div>
+        )}
         {restartInfo && (
           <div className="restart-banner" role="status" aria-live="assertive">
             <strong>{formatRestartLabel(restartInfo.type)}</strong> for {restartInfo.teamName} 
             {restartInfo.remaining.toFixed(1)}s
           </div>
         )}
-        <div className="pitch-wrapper">
-          <PitchCanvas renderState={renderState} />
-          {hudData.length > 0 && (
-            <div className="match-hud">
-              {hudData.map((entry) => (
-                <div key={entry.team.id} className="hud-card">
-                  <div className="hud-header">
-                    <span style={{ color: entry.team.primaryColor }}>{entry.team.name}</span>
-                    <span>
-                      YC {entry.yellowCards} | RC {entry.redCards}
-                    </span>
-                  </div>
-                  <div className="hud-metrics">
-                    <div className="hud-metric">
-                      <span>Avg Fatigue</span>
-                      <strong>{Math.round(entry.avgFatigue * 100)}%</strong>
+        <div className="match-text-grid">
+          <div className="match-column">
+            <div className="match-column-header">Team Overview</div>
+            {hudData.length === 0 && <div className="hud-muted">Team summaries will appear once the match begins.</div>}
+            {hudData.length > 0 && (
+              <div className="match-hud">
+                {hudData.map((entry) => (
+                  <div key={entry.team.id} className="hud-card">
+                    <div className="hud-header">
+                      <span style={{ color: entry.team.primaryColor }}>{entry.team.name}</span>
+                      <span>
+                        YC {entry.yellowCards} | RC {entry.redCards}
+                      </span>
                     </div>
-                    <div className="hud-metric">
-                      <span>Avg Morale</span>
-                      <strong>{Math.round(entry.avgMorale)}</strong>
-                    </div>
-                    <div className="hud-metric">
-                      <span>Injuries</span>
-                      <strong>{entry.injuries}</strong>
-                    </div>
-                  </div>
-                  <div className="hud-alerts">
-                    {entry.alerts.length === 0 && <div className="hud-muted">No alerts</div>}
-                    {entry.alerts.map((alert) => (
-                      <div key={alert.id} className="hud-alert">
-                        <span>{alert.label}</span>
-                        <span>{alert.detail}</span>
+                    <div className="hud-metrics">
+                      <div className="hud-metric">
+                        <span>Avg Fatigue</span>
+                        <strong>{Math.round(entry.avgFatigue * 100)}%</strong>
                       </div>
-                    ))}
+                      <div className="hud-metric">
+                        <span>Avg Morale</span>
+                        <strong>{Math.round(entry.avgMorale)}</strong>
+                      </div>
+                      <div className="hud-metric">
+                        <span>Injuries</span>
+                        <strong>{entry.injuries}</strong>
+                      </div>
+                    </div>
+                    <div className="hud-alerts">
+                      {entry.alerts.length === 0 && <div className="hud-muted">No alerts</div>}
+                      {entry.alerts.map((alert) => (
+                        <div key={alert.id} className="hud-alert">
+                          <span>{alert.label}</span>
+                          <span>{alert.detail}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="match-column">
+            <div className="match-column-header">Live Commentary</div>
+            {commentary.length === 0 && <p>Commentary feed will appear as the match unfolds.</p>}
+            {commentary.length > 0 && (
+              <ul className="commentary-list" aria-live="polite" aria-relevant="additions text">
+                {commentary.slice(0, 12).map((line) => (
+                  <li key={line.id}>
+                    <span className="commentary-time">{formatClock(line.timeSeconds)}</span>
+                    <span>{line.text}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
         <div className="controls-row" style={{ marginTop: '16px' }}>
           {[2, 4, 8, 16].map((speed) => (
@@ -537,6 +593,7 @@ const MatchPage = () => {
               aria-label={`Set speed to ${speed}x`}
               aria-pressed={state.simSpeed === speed}
               aria-keyshortcuts={String([2, 4, 8, 16].indexOf(speed) + 1)}
+              disabled={controlsDisabled}
             >
               x{speed}
             </button>
@@ -547,6 +604,7 @@ const MatchPage = () => {
             aria-label={state.isPaused ? 'Resume match' : 'Pause match'}
             aria-pressed={state.isPaused}
             aria-keyshortcuts="Space P"
+            disabled={controlsDisabled}
           >
             {state.isPaused ? 'Resume' : 'Pause'}
           </button>
@@ -623,21 +681,6 @@ const MatchPage = () => {
               );
             })}
           </div>
-        )}
-      </section>
-
-      <section className="card">
-        <h3>Commentary</h3>
-        {commentary.length === 0 && <p>Commentary feed will appear as the match unfolds.</p>}
-        {commentary.length > 0 && (
-          <ul className="commentary-list" aria-live="polite" aria-relevant="additions text">
-            {commentary.slice(0, 12).map((line) => (
-              <li key={line.id}>
-                <span className="commentary-time">{formatClock(line.timeSeconds)}</span>
-                <span>{line.text}</span>
-              </li>
-            ))}
-          </ul>
         )}
       </section>
 

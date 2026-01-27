@@ -1,6 +1,6 @@
 import { DEFAULT_PITCH, PitchDimensions, RenderState, SimulationState, TeamState, Vector2 } from '../domain/simulationTypes';
 import { DEFAULT_ENVIRONMENT, EnvironmentState } from '../domain/environmentTypes';
-import { CommentaryLine, MatchStats } from '../domain/matchTypes';
+import { CommentaryLine, MatchStats, TeamMatchStats } from '../domain/matchTypes';
 import { PlayerAttributes } from '../domain/types';
 import { TeamSetupState } from '../domain/teamSetupTypes';
 import { getRoleDutyBehavior, RoleBehavior } from '../data/roleBehavior';
@@ -41,6 +41,7 @@ import {
   adjustPlayerMorale,
   adjustTeamMorale,
   applyAdaptiveInstructions,
+  applyHalftimeRecovery,
   buildAdaptationState,
   createAdaptationWindow,
   getInitialMorale,
@@ -92,13 +93,28 @@ type EngineConfig = {
   onRender?: (state: RenderState) => void;
   teamSetup?: TeamSetupState;
   environment?: EnvironmentState;
-  onMatchUpdate?: (stats: MatchStats, commentary: CommentaryLine[], restart: RestartInfo | null) => void;
+  onMatchUpdate?: (
+    stats: MatchStats,
+    commentary: CommentaryLine[],
+    restart: RestartInfo | null,
+    status: MatchStatus
+  ) => void;
 };
 
 type LoopState = {
   running: boolean;
   paused: boolean;
   speed: number;
+};
+
+type MatchPhase = 'pre_kickoff' | 'first_half' | 'half_time' | 'second_half' | 'full_time';
+
+export type MatchStatus = {
+  phase: MatchPhase;
+  half: 1 | 2;
+  stoppageSeconds: number;
+  halfEndsAt: number;
+  halftimeRemaining: number | null;
 };
 
 type PlayerMeta = {
@@ -150,6 +166,43 @@ const MAX_WINDOWS = 3;
 const WINDOW_GRACE_SECONDS = 30;
 const CONTROL_DISTANCE = 2.2;
 const CONTROL_SPEED = 2.4;
+const HALF_DURATION = 2700;
+const FULL_DURATION = 5400;
+const HALFTIME_BREAK = 60;
+const MAX_STOPPAGE_FIRST = 5;
+const MAX_STOPPAGE_SECOND = 7;
+const pick = <T,>(options: T[]) => options[Math.floor(Math.random() * options.length)];
+const TRICK_LINES = [
+  '{player} beats a man with a rainbow flick.',
+  '{player} rolls past a marker with a slick stepover.',
+  '{player} tricks a defender with a quick roulette.'
+];
+const OVERLAP_LINES = [
+  '{player} overlaps down the flank.',
+  '{player} surges on an overlapping run.',
+  '{player} races beyond the winger on the overlap.'
+];
+const CARRY_LINES = [
+  '{player} drives forward with the ball.',
+  '{player} carries it through midfield.',
+  '{player} pushes on with a strong carry.'
+];
+const WIDE_BACK_ROLES = new Set([
+  'full_back',
+  'holding_full_back',
+  'inside_full_back',
+  'inverted_full_back',
+  'pressing_full_back',
+  'wing_back',
+  'holding_wing_back',
+  'inside_wing_back',
+  'inverted_wing_back',
+  'pressing_wing_back',
+  'playmaking_wing_back',
+  'advanced_wing_back',
+  'overlapping_cb',
+  'wide_cb'
+]);
 const buildRoleArchetypeProfile = (): RoleArchetypeProfile => ({
   inPossession: {
     axisShift: 0,
@@ -434,7 +487,12 @@ export class GameEngineAgent {
   private accumulator = 0;
   private lastTime = 0;
   private onRender?: (state: RenderState) => void;
-  private onMatchUpdate?: (stats: MatchStats, commentary: CommentaryLine[], restart: RestartInfo | null) => void;
+  private onMatchUpdate?: (
+    stats: MatchStats,
+    commentary: CommentaryLine[],
+    restart: RestartInfo | null,
+    status: MatchStatus
+  ) => void;
   private statsAgent: StatsAgent;
   private commentaryAgent: CommentaryAgent;
   private substitutionTrackers: Record<string, SubstitutionTracker>;
@@ -446,6 +504,19 @@ export class GameEngineAgent {
   private matchImportance: number;
   private halftimeRecovered = false;
   private adaptationState: Record<string, AdaptationState>;
+  private lastMinuteMark = 0;
+  private lastMinuteStats: MatchStats;
+  private matchPhase: MatchPhase = 'pre_kickoff';
+  private halftimeRemaining = 0;
+  private stoppageFirstHalf = 0;
+  private stoppageSecondHalf = 0;
+  private kickoffTeamIdFirstHalf: string | null = null;
+  private kickoffTeamIdSecondHalf: string | null = null;
+  private sidesSwitched = false;
+  private lastTouchTeamId: string | null = null;
+  private lastTouchPlayerId: string | null = null;
+  private lastDroppedBallAt = -999;
+  private halfStartStats: MatchStats;
 
   constructor(config: EngineConfig = {}) {
     this.pitch = config.pitch ?? DEFAULT_PITCH;
@@ -475,6 +546,14 @@ export class GameEngineAgent {
     this.substitutionTrackers = buildSubstitutionTrackers(this.state, this.teamSetup);
     this.adaptationState = this.buildAdaptationState();
     this.initializePlayerState();
+    this.lastMinuteStats = this.cloneMatchStats(this.statsAgent.getStats());
+    this.halfStartStats = this.cloneMatchStats(this.statsAgent.getStats());
+    const [homeTeam, awayTeam] = this.state.teams;
+    if (homeTeam && awayTeam) {
+      this.kickoffTeamIdFirstHalf = Math.random() < 0.5 ? homeTeam.id : awayTeam.id;
+      this.kickoffTeamIdSecondHalf =
+        this.kickoffTeamIdFirstHalf === homeTeam.id ? awayTeam.id : homeTeam.id;
+    }
   }
 
   private getDecisionContext(): DecisionContext {
@@ -566,6 +645,13 @@ export class GameEngineAgent {
     if (this.loopState.running) return;
     this.loopState.running = true;
     this.lastTime = performance.now();
+    if (this.matchPhase === 'pre_kickoff') {
+      const kickoffTeam = this.kickoffTeamIdFirstHalf ?? this.state.teams[0]?.id;
+      if (kickoffTeam) {
+        this.matchPhase = 'first_half';
+        this.beginKickoff(kickoffTeam);
+      }
+    }
     requestAnimationFrame(this.loop);
   }
 
@@ -589,6 +675,20 @@ export class GameEngineAgent {
     return this.environment;
   }
 
+  getMatchStatus(): MatchStatus {
+    const isSecondHalf = this.matchPhase === 'second_half' || this.matchPhase === 'full_time';
+    const half = isSecondHalf ? 2 : 1;
+    const stoppageSeconds = isSecondHalf ? this.stoppageSecondHalf : this.stoppageFirstHalf;
+    const halfEndsAt = (half === 1 ? HALF_DURATION : FULL_DURATION) + stoppageSeconds;
+    return {
+      phase: this.matchPhase,
+      half,
+      stoppageSeconds,
+      halfEndsAt,
+      halftimeRemaining: this.matchPhase === 'half_time' ? this.halftimeRemaining : null
+    };
+  }
+
   getSubstitutionStatus(): SubstitutionStatus {
     const status: SubstitutionStatus = {};
     Object.entries(this.substitutionTrackers).forEach(([teamId, tracker]) => {
@@ -605,6 +705,9 @@ export class GameEngineAgent {
   }
 
   applySubstitution(teamId: string, offPlayerId: string, onPlayerId: string) {
+    if (this.matchPhase === 'full_time') {
+      return { ok: false, error: 'Match has finished.' };
+    }
     const tracker = this.substitutionTrackers[teamId];
     if (!tracker) {
       return { ok: false, error: 'Unknown team.' };
@@ -692,12 +795,24 @@ export class GameEngineAgent {
       const dt = 1 / this.tickRate;
 
       while (this.accumulator >= dt) {
+        if (this.matchPhase === 'half_time') {
+          this.handleHalftimeTick(dt);
+          this.accumulator -= dt;
+          continue;
+        }
+        if (this.matchPhase === 'full_time') {
+          this.accumulator = 0;
+          break;
+        }
+
         this.prevState = cloneState(this.state);
         this.updateTacticalTargets();
         this.physics.step(this.state, dt);
         this.state.time += dt;
         this.statsAgent.step(this.state, dt);
         this.tickEvents(dt);
+        this.emitMinuteCommentary();
+        this.updateMatchFlow();
         this.accumulator -= dt;
       }
     }
@@ -705,7 +820,12 @@ export class GameEngineAgent {
     const alpha = this.accumulator * this.tickRate;
     const renderState = interpolateState(this.prevState, this.state, alpha);
     this.onRender?.(renderState);
-    this.onMatchUpdate?.(this.statsAgent.getStats(), this.commentaryAgent.getLines(), this.getRestartInfo());
+    this.onMatchUpdate?.(
+      this.statsAgent.getStats(),
+      this.commentaryAgent.getLines(),
+      this.getRestartInfo(),
+      this.getMatchStatus()
+    );
     requestAnimationFrame(this.loop);
   };
 
@@ -714,6 +834,12 @@ export class GameEngineAgent {
     this.updateMorale(dt);
     this.updateInjuries(dt);
     this.updateOpponentAdaptation();
+    if (this.handleDroppedBall()) {
+      return;
+    }
+    if (this.handleBallOutOfPlay()) {
+      return;
+    }
     if (this.restartState) {
       this.handleRestart(dt);
       return;
@@ -736,6 +862,107 @@ export class GameEngineAgent {
 
   private updateTacticalTargets() {
     updateTacticalTargets(this.getTacticalContext());
+  }
+
+  private emitMinuteCommentary() {
+    const currentMinute = Math.floor(this.state.time / 60);
+    if (currentMinute <= this.lastMinuteMark) return;
+    const [homeTeam, awayTeam] = this.state.teams;
+    if (!homeTeam || !awayTeam) return;
+
+    const stats = this.statsAgent.getStats();
+    const totalPossession =
+      stats.byTeam[homeTeam.id].possessionSeconds + stats.byTeam[awayTeam.id].possessionSeconds;
+    const homePossession =
+      totalPossession > 0 ? (stats.byTeam[homeTeam.id].possessionSeconds / totalPossession) * 100 : 50;
+    const awayPossession =
+      totalPossession > 0 ? (stats.byTeam[awayTeam.id].possessionSeconds / totalPossession) * 100 : 50;
+
+    const homeSnapshot = this.buildMinuteSnapshot(homeTeam.id, homeTeam.name, stats, this.lastMinuteStats, {
+      possessionPct: homePossession,
+      avgFatigue: this.getTeamAverageFatigue(homeTeam.id),
+      avgMorale: this.getTeamAverageMorale(homeTeam.id)
+    });
+    const awaySnapshot = this.buildMinuteSnapshot(awayTeam.id, awayTeam.name, stats, this.lastMinuteStats, {
+      possessionPct: awayPossession,
+      avgFatigue: this.getTeamAverageFatigue(awayTeam.id),
+      avgMorale: this.getTeamAverageMorale(awayTeam.id)
+    });
+
+    this.commentaryAgent.addMinuteUpdate({
+      minute: currentMinute,
+      timeSeconds: this.state.time,
+      home: homeSnapshot,
+      away: awaySnapshot
+    });
+
+    this.lastMinuteMark = currentMinute;
+    this.lastMinuteStats = this.cloneMatchStats(stats);
+  }
+
+  private buildMinuteSnapshot(
+    teamId: string,
+    teamName: string,
+    stats: MatchStats,
+    previous: MatchStats,
+    meta: { possessionPct: number; avgFatigue: number; avgMorale: number }
+  ) {
+    const current = stats.byTeam[teamId];
+    const prior = previous.byTeam[teamId];
+    const delta = this.diffTeamStats(current, prior);
+    return {
+      id: teamId,
+      name: teamName,
+      score: current.goals,
+      possessionPct: meta.possessionPct,
+      avgFatigue: meta.avgFatigue,
+      avgMorale: meta.avgMorale,
+      stats: { ...current },
+      delta
+    };
+  }
+
+  private diffTeamStats(current: TeamMatchStats, previous: TeamMatchStats) {
+    return {
+      possessionSeconds: current.possessionSeconds - previous.possessionSeconds,
+      passesAttempted: current.passesAttempted - previous.passesAttempted,
+      passes: current.passes - previous.passes,
+      shots: current.shots - previous.shots,
+      shotsOnTarget: current.shotsOnTarget - previous.shotsOnTarget,
+      shotsOffTarget: current.shotsOffTarget - previous.shotsOffTarget,
+      shotsBlocked: current.shotsBlocked - previous.shotsBlocked,
+      goals: current.goals - previous.goals,
+      fouls: current.fouls - previous.fouls,
+      yellowCards: current.yellowCards - previous.yellowCards,
+      redCards: current.redCards - previous.redCards,
+      offsides: current.offsides - previous.offsides,
+      corners: current.corners - previous.corners,
+      tacklesWon: current.tacklesWon - previous.tacklesWon,
+      interceptions: current.interceptions - previous.interceptions,
+      saves: current.saves - previous.saves,
+      xg: current.xg - previous.xg,
+      substitutions: current.substitutions - previous.substitutions
+    };
+  }
+
+  private cloneMatchStats(stats: MatchStats): MatchStats {
+    const byTeam: Record<string, TeamMatchStats> = {};
+    Object.entries(stats.byTeam).forEach(([teamId, teamStats]) => {
+      byTeam[teamId] = { ...teamStats };
+    });
+    return { clockSeconds: stats.clockSeconds, byTeam };
+  }
+
+  private getTeamAverageFatigue(teamId: string) {
+    const players = this.state.players.filter((player) => player.teamId === teamId);
+    if (players.length === 0) return 0;
+    return players.reduce((sum, player) => sum + (player.fatigue ?? 0), 0) / players.length;
+  }
+
+  private getTeamAverageMorale(teamId: string) {
+    const players = this.state.players.filter((player) => player.teamId === teamId);
+    if (players.length === 0) return 60;
+    return players.reduce((sum, player) => sum + (player.morale ?? 60), 0) / players.length;
   }
 
   private initializePlayerState() {
@@ -817,9 +1044,10 @@ export class GameEngineAgent {
   private handleGoalkeeperPossession(
     goalkeeper: typeof this.state.players[number],
     instructions: Record<string, string> | undefined,
-    pressure: number
+    pressure: number,
+    decisionContext?: { ignoreOffside?: boolean; setPiece?: 'goal_kick' }
   ) {
-    return handleGoalkeeperPossession(this.getDecisionContext(), goalkeeper, instructions, pressure);
+    return handleGoalkeeperPossession(this.getDecisionContext(), goalkeeper, instructions, pressure, decisionContext);
   }
 
   private chooseGoalkeeperTarget(
@@ -875,6 +1103,8 @@ export class GameEngineAgent {
       this.possession = null;
       return;
     }
+    this.lastTouchTeamId = possessor.teamId;
+    this.lastTouchPlayerId = possessor.id;
 
     const velLen = Math.hypot(possessor.velocity.x, possessor.velocity.y);
     const dirX = velLen > 0.1 ? possessor.velocity.x / velLen : 1;
@@ -923,6 +1153,8 @@ export class GameEngineAgent {
       this.state.ball.position = { ...defender.position };
       this.state.ball.velocity = { x: 0, y: 0 };
       this.possession = { teamId: defender.teamId, playerId: defender.id };
+      this.lastTouchTeamId = defender.teamId;
+      this.lastTouchPlayerId = defender.id;
       this.actionCooldown = 0.35;
       this.statsAgent.recordTackle(defender.teamId);
 
@@ -1054,13 +1286,41 @@ export class GameEngineAgent {
 
     if (this.shouldCarryBall(possessor, instructions, pressure)) {
       this.actionCooldown = this.getActionCooldown(possessor, instructions, 'carry', pressure);
-      if (Math.random() < 0.08) {
-        this.commentaryAgent.addLine(this.state.time, `${possessor.name} carries the ball forward.`);
+      const carryLine = this.getCarryCommentary(possessor, pressure);
+      if (carryLine) {
+        this.commentaryAgent.addLine(this.state.time, carryLine);
       }
       return;
     }
 
     this.actionCooldown = this.getActionCooldown(possessor, instructions, 'carry', pressure);
+  }
+
+  private getCarryCommentary(player: typeof this.state.players[number], pressure: number) {
+    if (Math.random() > 0.14) return null;
+    const roleId = player.roleId ?? null;
+    const dutyId = player.dutyId ?? null;
+    const hasTrick =
+      this.hasPlaystyle(player, 'trickster') ||
+      this.hasPlaystyle(player, 'flair') ||
+      this.hasPlaystyle(player, 'gamechanger') ||
+      this.hasTrait(player, 'tries_to_play_way_out_of_trouble') ||
+      this.hasTrait(player, 'knocks_ball_past_opponent');
+    if (hasTrick && Math.random() < 0.6) {
+      return pick(TRICK_LINES).replace('{player}', player.name);
+    }
+    if (this.isWideBackRole(roleId) && dutyId !== 'defend' && Math.random() < 0.6) {
+      return pick(OVERLAP_LINES).replace('{player}', player.name);
+    }
+    if (pressure > 0.6) {
+      return `${player.name} rides the challenge and keeps going.`;
+    }
+    return pick(CARRY_LINES).replace('{player}', player.name);
+  }
+
+  private isWideBackRole(roleId: string | null) {
+    if (!roleId) return false;
+    return WIDE_BACK_ROLES.has(roleId);
   }
 
   private shouldCarryBall(
@@ -1129,11 +1389,12 @@ export class GameEngineAgent {
   }
 
   private getAttackDirection(teamId: string) {
-    return teamId === this.state.teams[0]?.id ? 1 : -1;
+    const base = teamId === this.state.teams[0]?.id ? 1 : -1;
+    return this.sidesSwitched ? -base : base;
   }
 
   private getGoalPosition(teamId: string) {
-    const attackRight = teamId === this.state.teams[0]?.id;
+    const attackRight = this.getAttackDirection(teamId) === 1;
     return {
       x: attackRight ? this.pitch.width : 0,
       y: this.pitch.height / 2
@@ -1637,6 +1898,10 @@ export class GameEngineAgent {
   }
 
   private applyRuleDecision(decision: RuleDecision) {
+    if (decision.type !== 'foul') {
+      this.lastTouchTeamId = decision.teamId;
+      this.lastTouchPlayerId = decision.playerId;
+    }
     if (decision.type === 'pass' || decision.type === 'out' || decision.type === 'offside') {
       this.statsAgent.recordPassAttempt(decision.teamId);
     }
@@ -1810,12 +2075,12 @@ export class GameEngineAgent {
     });
   }
 
-  private startRestart(decision: RuleDecision) {
-    const restartPosition = decision.restartPosition;
-    const restartTeamId = decision.restartTeamId;
-    const restartType = decision.restartType;
-    if (!restartPosition || !restartTeamId || !restartType) return;
-
+  private beginRestart(
+    restartType: NonNullable<RuleDecision['restartType']>,
+    restartTeamId: string,
+    restartPosition: Vector2,
+    commentary?: string
+  ) {
     const taker = this.pickRestartTaker(restartTeamId, restartType, restartPosition);
     this.restartState = {
       remaining: this.getRestartDuration(restartType),
@@ -1832,8 +2097,230 @@ export class GameEngineAgent {
     this.alignPlayersForRestart();
     this.commentaryAgent.addLine(
       this.state.time,
-      `${this.getRestartLabel(restartType)} for ${this.resolveTeamName(restartTeamId)}.`
+      commentary ?? `${this.getRestartLabel(restartType)} for ${this.resolveTeamName(restartTeamId)}.`
     );
+  }
+
+  private beginKickoff(teamId: string) {
+    this.beginRestart('kick_off', teamId, { x: this.pitch.width / 2, y: this.pitch.height / 2 });
+  }
+
+  private startRestart(decision: RuleDecision) {
+    const restartPosition = decision.restartPosition;
+    const restartTeamId = decision.restartTeamId;
+    const restartType = decision.restartType;
+    if (!restartPosition || !restartTeamId || !restartType) return;
+    this.beginRestart(restartType, restartTeamId, restartPosition);
+  }
+
+  private handleHalftimeTick(dt: number) {
+    this.halftimeRemaining = Math.max(0, this.halftimeRemaining - dt);
+    if (this.halftimeRemaining <= 0) {
+      this.beginSecondHalf();
+    }
+  }
+
+  private updateMatchFlow() {
+    if (this.matchPhase === 'first_half') {
+      if (this.stoppageFirstHalf === 0 && this.state.time >= HALF_DURATION) {
+        this.stoppageFirstHalf = this.calculateStoppageSeconds(1);
+        this.announceStoppage(this.stoppageFirstHalf);
+      }
+      const halfEnd = HALF_DURATION + this.stoppageFirstHalf;
+      if (this.shouldEndHalf(halfEnd)) {
+        this.enterHalfTime();
+      }
+    } else if (this.matchPhase === 'second_half') {
+      if (this.stoppageSecondHalf === 0 && this.state.time >= FULL_DURATION) {
+        this.stoppageSecondHalf = this.calculateStoppageSeconds(2);
+        this.announceStoppage(this.stoppageSecondHalf);
+      }
+      const halfEnd = FULL_DURATION + this.stoppageSecondHalf;
+      if (this.shouldEndHalf(halfEnd)) {
+        this.enterFullTime();
+      }
+    }
+  }
+
+  private shouldEndHalf(halfEnd: number) {
+    if (this.state.time < halfEnd) return false;
+    const ballSpeed = Math.hypot(this.state.ball.velocity.x, this.state.ball.velocity.y);
+    if (this.restartState || !this.possession || ballSpeed < 0.4) {
+      return true;
+    }
+    return this.state.time >= halfEnd + 8;
+  }
+
+  private enterHalfTime() {
+    this.matchPhase = 'half_time';
+    this.halftimeRemaining = HALFTIME_BREAK;
+    this.restartState = null;
+    this.possession = null;
+    this.actionCooldown = 0;
+    applyHalftimeRecovery(this.getEventContext());
+    this.halftimeRecovered = true;
+  }
+
+  private beginSecondHalf() {
+    this.switchSides();
+    this.matchPhase = 'second_half';
+    this.halfStartStats = this.cloneMatchStats(this.statsAgent.getStats());
+    const kickoffTeam = this.kickoffTeamIdSecondHalf ?? this.state.teams[0]?.id;
+    if (kickoffTeam) {
+      this.beginKickoff(kickoffTeam);
+    }
+  }
+
+  private enterFullTime() {
+    if (this.matchPhase === 'full_time') return;
+    this.matchPhase = 'full_time';
+    this.restartState = null;
+    this.possession = null;
+    this.actionCooldown = 0;
+    this.loopState.paused = true;
+    this.commentaryAgent.addLine(this.state.time, 'Full-time.');
+  }
+
+  private announceStoppage(stoppageSeconds: number) {
+    if (stoppageSeconds <= 0) return;
+    const minutes = Math.round(stoppageSeconds / 60);
+    const label = minutes === 1 ? 'minute' : 'minutes';
+    this.commentaryAgent.addLine(this.state.time, `${minutes} ${label} of stoppage time added.`);
+  }
+
+  private calculateStoppageSeconds(half: 1 | 2) {
+    const current = this.statsAgent.getStats();
+    let fouls = 0;
+    let yellows = 0;
+    let reds = 0;
+    let goals = 0;
+    let subs = 0;
+    Object.keys(current.byTeam).forEach((teamId) => {
+      const now = current.byTeam[teamId];
+      const start = this.halfStartStats.byTeam[teamId];
+      fouls += now.fouls - start.fouls;
+      yellows += now.yellowCards - start.yellowCards;
+      reds += now.redCards - start.redCards;
+      goals += now.goals - start.goals;
+      subs += now.substitutions - start.substitutions;
+    });
+
+    const baseSeconds = fouls * 6 + yellows * 15 + reds * 30 + goals * 20 + subs * 20;
+    let minutes = Math.round(baseSeconds / 60);
+    if (baseSeconds > 0) {
+      minutes = Math.max(minutes, half === 1 ? 1 : 2);
+    }
+    const max = half === 1 ? MAX_STOPPAGE_FIRST : MAX_STOPPAGE_SECOND;
+    minutes = clamp(minutes, 0, max);
+    return minutes * 60;
+  }
+
+  private switchSides() {
+    this.sidesSwitched = !this.sidesSwitched;
+    this.rules.switchSides();
+    this.state.players.forEach((player) => {
+      player.position = { x: this.pitch.width - player.position.x, y: player.position.y };
+      player.homePosition = { x: this.pitch.width - player.homePosition.x, y: player.homePosition.y };
+      player.targetPosition = { ...player.homePosition };
+      player.tacticalPosition = { ...player.homePosition };
+      player.velocity = { x: 0, y: 0 };
+      player.tacticalWander = 1;
+    });
+    this.state.ball.position = { x: this.pitch.width / 2, y: this.pitch.height / 2 };
+    this.state.ball.velocity = { x: 0, y: 0 };
+  }
+
+  private handleBallOutOfPlay() {
+    if (this.restartState || this.matchPhase === 'half_time' || this.matchPhase === 'full_time') return false;
+    const { ball } = this.state;
+    const outX = ball.position.x < 0 || ball.position.x > this.pitch.width;
+    const outY = ball.position.y < 0 || ball.position.y > this.pitch.height;
+    if (!outX && !outY) return false;
+
+    const lastTouchTeamId = this.lastTouchTeamId ?? this.possession?.teamId;
+    if (!lastTouchTeamId) return false;
+
+    if (outY) {
+      const restartTeamId = this.getOpponentTeamId(lastTouchTeamId);
+      const restartPosition = this.getThrowInSpot(ball.position);
+      this.beginRestart('throw_in', restartTeamId, restartPosition);
+      return true;
+    }
+
+    const goalLineX = ball.position.x < 0 ? 0 : this.pitch.width;
+    const defendingTeamId =
+      this.state.teams.find((team) => this.getDefendingGoalX(team.id) === goalLineX)?.id ??
+      this.getOpponentTeamId(lastTouchTeamId);
+    const restartType = lastTouchTeamId === defendingTeamId ? 'corner' : 'goal_kick';
+    const restartTeamId =
+      restartType === 'corner' ? this.getOpponentTeamId(defendingTeamId) : defendingTeamId;
+    const restartPosition =
+      restartType === 'corner'
+        ? this.getCornerSpot(restartTeamId, ball.position)
+        : this.getGoalKickSpot(defendingTeamId);
+    if (restartType === 'corner') {
+      this.statsAgent.recordCorner(restartTeamId);
+    }
+    this.beginRestart(restartType, restartTeamId, restartPosition);
+    return true;
+  }
+
+  private handleDroppedBall() {
+    if (this.restartState || this.matchPhase === 'half_time' || this.matchPhase === 'full_time') return false;
+    if (this.state.time - this.lastDroppedBallAt < 30) return false;
+    const ballSpeed = Math.hypot(this.state.ball.velocity.x, this.state.ball.velocity.y);
+    if (ballSpeed < 0.2) return false;
+
+    const ball = this.state.ball.position;
+    const officialHit = this.state.officials.find((official) => {
+      const dx = official.position.x - ball.x;
+      const dy = official.position.y - ball.y;
+      return Math.hypot(dx, dy) < 0.9;
+    });
+    if (!officialHit) return false;
+
+    this.lastDroppedBallAt = this.state.time;
+    const dropPosition = {
+      x: clamp(ball.x, 1, this.pitch.width - 1),
+      y: clamp(ball.y, 1, this.pitch.height - 1)
+    };
+
+    const teams = this.state.teams;
+    const inPenalty = teams.find((team) => this.rules.isInPenaltyAreaForTeam(team.id, dropPosition));
+    let restartTeamId = inPenalty?.id ?? this.lastTouchTeamId;
+    if (!restartTeamId) {
+      const nearest = this.findNearestPlayerToBall();
+      restartTeamId = nearest?.teamId ?? teams[0]?.id ?? 'home';
+    }
+
+    this.beginRestart('dropped_ball', restartTeamId, dropPosition, 'Dropped ball.');
+    return true;
+  }
+
+  private getAttackingGoalX(teamId: string) {
+    return this.getAttackDirection(teamId) === 1 ? this.pitch.width : 0;
+  }
+
+  private getGoalKickSpot(teamId: string) {
+    const goalX = this.getDefendingGoalX(teamId);
+    const offset = goalX === 0 ? 5.5 : -5.5;
+    return {
+      x: clamp(goalX + offset, 0, this.pitch.width),
+      y: this.pitch.height / 2
+    };
+  }
+
+  private getCornerSpot(attackingTeamId: string, position: Vector2) {
+    const goalX = this.getAttackingGoalX(attackingTeamId);
+    const x = goalX === 0 ? 0.5 : this.pitch.width - 0.5;
+    const y = position.y < this.pitch.height / 2 ? 0.5 : this.pitch.height - 0.5;
+    return { x, y };
+  }
+
+  private getThrowInSpot(position: Vector2) {
+    const x = clamp(position.x, 1, this.pitch.width - 1);
+    const y = position.y < this.pitch.height / 2 ? 0.5 : this.pitch.height - 0.5;
+    return { x, y };
   }
 
   private handleRestart(dt: number) {
@@ -1849,6 +2336,9 @@ export class GameEngineAgent {
   private alignPlayersForRestart() {
     if (!this.restartState) return;
     switch (this.restartState.type) {
+      case 'dropped_ball':
+        this.alignDefaultRestart(this.restartState);
+        return;
       case 'corner':
         this.alignCornerPositions(this.restartState);
         return;
@@ -2052,6 +2542,9 @@ export class GameEngineAgent {
 
   private executeRestart(restart: RestartState) {
     switch (restart.type) {
+      case 'dropped_ball':
+        this.executeDroppedBall(restart);
+        return;
       case 'goal_kick':
         this.executeGoalKick(restart);
         return;
@@ -2155,7 +2648,7 @@ export class GameEngineAgent {
       taker,
       target,
       instructions,
-      { ignoreOffside: true, forceAerial: true, setPiece: 'free_kick', passLeadPosition: deliverySpot }
+      { forceAerial: true, setPiece: 'free_kick', passLeadPosition: deliverySpot }
     );
     decision.commentary = `${taker.name} delivers the free kick.`;
     this.applyRuleDecision(decision);
@@ -2247,7 +2740,10 @@ export class GameEngineAgent {
 
     const instructions = this.getTeamInstructions(restart.teamId);
     this.possession = { teamId: restart.teamId, playerId: taker.id };
-    const decision = this.handleGoalkeeperPossession(taker, instructions, 0);
+    const decision = this.handleGoalkeeperPossession(taker, instructions, 0, {
+      ignoreOffside: true,
+      setPiece: 'goal_kick'
+    });
     if (decision) {
       decision.commentary = `${taker.name} takes the goal kick.`;
       this.applyRuleDecision(decision);
@@ -2256,9 +2752,23 @@ export class GameEngineAgent {
     }
   }
 
+  private executeDroppedBall(restart: RestartState) {
+    const taker = this.state.players.find((player) => player.id === restart.takerId);
+    if (!taker) {
+      this.commentaryAgent.addLine(this.state.time, 'Play resumes.');
+      return;
+    }
+    this.possession = { teamId: restart.teamId, playerId: taker.id };
+    this.state.ball.position = { ...restart.position };
+    this.state.ball.velocity = { x: 0, y: 0 };
+    this.commentaryAgent.addLine(this.state.time, 'Play resumes.');
+  }
+
   private getRestartDuration(restartType: NonNullable<RuleDecision['restartType']>) {
     const jitter = Math.random() * 0.8;
     switch (restartType) {
+      case 'dropped_ball':
+        return 2.5 + jitter;
       case 'penalty':
         return 6 + jitter;
       case 'corner':
@@ -2277,6 +2787,8 @@ export class GameEngineAgent {
 
   private getRestartLabel(restartType: NonNullable<RuleDecision['restartType']>) {
     switch (restartType) {
+      case 'dropped_ball':
+        return 'Dropped ball';
       case 'throw_in':
         return 'Throw-in';
       case 'corner':

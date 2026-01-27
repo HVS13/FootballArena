@@ -56,7 +56,7 @@ describe('PhysicsAgent', () => {
     expect(state.players[0].targetPosition).toEqual(state.players[0].position);
   });
 
-  test('bounces the ball off pitch boundaries', () => {
+  test('lets the ball exit the pitch for restarts', () => {
     const state = buildState();
     state.ball.position.x = DEFAULT_PITCH.width - state.ball.radius - 0.1;
     state.ball.velocity.x = 3;
@@ -64,7 +64,7 @@ describe('PhysicsAgent', () => {
 
     agent.step(state, 1);
 
-    expect(state.ball.velocity.x).toBeLessThan(0);
+    expect(state.ball.position.x).toBeGreaterThan(DEFAULT_PITCH.width);
   });
 
   test('applies wind force to the ball', () => {

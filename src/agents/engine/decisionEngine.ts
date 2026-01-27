@@ -29,7 +29,11 @@ export const handleGoalkeeperPossession = (
   context: DecisionContext,
   goalkeeper: SimPlayer,
   instructions: Record<string, string> | undefined,
-  pressure: number
+  pressure: number,
+  decisionContext?: {
+    ignoreOffside?: boolean;
+    setPiece?: 'goal_kick';
+  }
 ) => {
   const target = chooseGoalkeeperTarget(context, goalkeeper, instructions);
   if (!target) return null;
@@ -40,7 +44,8 @@ export const handleGoalkeeperPossession = (
     goalkeeper.teamId,
     goalkeeper,
     target,
-    gkInstructions
+    gkInstructions,
+    decisionContext
   );
   if (pressure > 0.35 && Math.random() < 0.2) {
     decision.commentary = `${goalkeeper.name} clears under pressure.`;

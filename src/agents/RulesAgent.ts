@@ -22,14 +22,42 @@ export type RuleDecision = {
   teamId: string;
   playerId: string;
   playerName: string;
+  targetPlayerName?: string;
+  turnoverPlayerName?: string;
+  keeperName?: string;
   commentary: string;
   stats: DecisionStats;
   advantage?: boolean;
   card?: 'yellow' | 'red';
   shotOutcome?: 'goal' | 'on_target' | 'off_target' | 'blocked';
+  shotStyle?:
+    | 'finesse'
+    | 'power'
+    | 'chip'
+    | 'header'
+    | 'overhead'
+    | 'trivela'
+    | 'volley'
+    | 'placed'
+    | 'long_range'
+    | 'standard';
+  passStyle?:
+    | 'whipped_cross'
+    | 'cross'
+    | 'through_ball'
+    | 'switch'
+    | 'long_ball'
+    | 'short'
+    | 'one_two'
+    | 'cutback'
+    | 'trivela'
+    | 'no_look'
+    | 'ground';
+  keeperAction?: 'catch' | 'parry' | 'palm' | 'smother';
+  setPieceType?: DecisionContext['setPiece'];
   ballPosition?: Vector2;
   ballVelocity?: Vector2;
-  restartType?: 'throw_in' | 'goal_kick' | 'corner' | 'free_kick' | 'penalty' | 'kick_off';
+  restartType?: 'throw_in' | 'goal_kick' | 'corner' | 'free_kick' | 'penalty' | 'kick_off' | 'dropped_ball';
   restartPosition?: Vector2;
   restartTeamId?: string;
   passRisk?: number;
@@ -85,12 +113,17 @@ export class RulesAgent {
   private homeTeamId: string;
   private matchImportance: number;
   private environment: EnvironmentState;
+  private sidesSwitched = false;
 
   constructor(config: RuleConfig) {
     this.pitch = config.pitch;
     this.homeTeamId = config.homeTeamId;
     this.matchImportance = config.matchImportance ?? 1;
     this.environment = config.environment ?? DEFAULT_ENVIRONMENT;
+  }
+
+  switchSides() {
+    this.sidesSwitched = !this.sidesSwitched;
   }
 
   decideEvent(
@@ -193,6 +226,10 @@ export class RulesAgent {
     return this.isOffside(state, teamId, receiver);
   }
 
+  isInPenaltyAreaForTeam(defendingTeamId: string, position: Vector2) {
+    return this.isInPenaltyArea(defendingTeamId, position);
+  }
+
   private resolvePass(
     state: SimulationState,
     teamId: string,
@@ -201,7 +238,15 @@ export class RulesAgent {
     instructions?: TeamInstructions,
     context?: DecisionContext
   ): RuleDecision {
-    const offside = receiver && !context?.ignoreOffside ? this.isOffside(state, teamId, receiver) : false;
+    const defendingTeamId = this.getOpponentTeamId(state, teamId);
+    const isCross = receiver
+      ? this.isAerialPass(passer, receiver, defendingTeamId, instructions)
+      : false;
+    const passStyle = this.getPassStyle(passer, receiver, instructions, context, isCross);
+    const offsideAllowedSetPieces = new Set(['corner', 'throw_in', 'goal_kick', 'kick_off']);
+    const ignoreOffside =
+      context?.ignoreOffside || (context?.setPiece ? offsideAllowedSetPieces.has(context.setPiece) : false);
+    const offside = receiver && !ignoreOffside ? this.isOffside(state, teamId, receiver) : false;
 
     if (offside && receiver) {
       const restartPosition = this.clampPosition(receiver.position);
@@ -211,8 +256,11 @@ export class RulesAgent {
         teamId,
         playerId: passer.id,
         playerName: passer.name,
+        targetPlayerName: receiver.name,
         commentary: `Offside! ${receiver.name} strays beyond the line.`,
         stats: {},
+        passStyle,
+        setPieceType: context?.setPiece,
         ballPosition: { ...receiver.position },
         ballVelocity: { x: 0, y: 0 },
         restartType: 'free_kick',
@@ -228,10 +276,6 @@ export class RulesAgent {
       getAttribute(passer, 'decisions')
     );
     let passChance = 0.6 + (passSkill / 100) * 0.35;
-    const defendingTeamId = this.getOpponentTeamId(state, teamId);
-    const isCross = receiver
-      ? this.isAerialPass(passer, receiver, defendingTeamId, instructions)
-      : false;
     const pressure = this.getPressure(state, passer);
     const composure = getAttribute(passer, 'composure');
     const consistency = getAttribute(passer, 'consistency');
@@ -301,8 +345,12 @@ export class RulesAgent {
         teamId,
         playerId: passer.id,
         playerName: passer.name,
+        targetPlayerName: receiver?.name,
+        turnoverPlayerName: interceptCandidate.player.name,
         commentary: `${interceptCandidate.player.name} steps in to intercept.`,
         stats: {},
+        passStyle,
+        setPieceType: context?.setPiece,
         ballPosition: { ...interceptCandidate.player.position },
         ballVelocity: { x: 0, y: 0 },
         passRisk,
@@ -320,8 +368,12 @@ export class RulesAgent {
           teamId,
           playerId: passer.id,
           playerName: passer.name,
+          targetPlayerName: receiver.name,
+          turnoverPlayerName: aerialContest.winner.name,
           commentary: `${aerialContest.winner.name} wins the header.`,
           stats: {},
+          passStyle,
+          setPieceType: context?.setPiece,
           ballPosition: { ...aerialContest.winner.position },
           ballVelocity: { x: 0, y: 0 },
           passRisk,
@@ -341,8 +393,12 @@ export class RulesAgent {
               teamId,
               playerId: passer.id,
               playerName: passer.name,
+              targetPlayerName: receiver.name,
+              turnoverPlayerName: opponent.name,
               commentary: `${receiver.name} miscontrols under pressure.`,
               stats: {},
+              passStyle,
+              setPieceType: context?.setPiece,
               ballPosition: { ...opponent.position },
               ballVelocity: { x: 0, y: 0 },
               passRisk,
@@ -361,36 +417,42 @@ export class RulesAgent {
         teamId,
         playerId: passer.id,
         playerName: passer.name,
+        targetPlayerName: receiver?.name,
         commentary: `${passer.name} finds a passing lane.`,
         stats: { pass: true },
+        passStyle,
+        setPieceType: context?.setPiece,
         ballPosition: { ...passer.position },
         ballVelocity,
         passRisk
       };
     }
 
-    const outOfPlay = Math.random() < 0.25;
-    const restartType = outOfPlay ? this.getOutOfPlayRestart(teamId, passer.position) : undefined;
-    const restartPosition = restartType
-      ? this.getRestartPosition(state, restartType, teamId, passer.position)
-      : undefined;
-    const restartTeamId = restartType ? this.getRestartTeamId(state, restartType, teamId) : undefined;
-    const commentary = outOfPlay
-      ? `${passer.name}'s pass runs out of play.`
-      : `${passer.name}'s pass is intercepted.`;
+    const dx = receiver ? receiver.position.x - passer.position.x : this.getAttackDirection(teamId) * 18;
+    const dy = receiver ? receiver.position.y - passer.position.y : 0;
+    const distance = Math.hypot(dx, dy) || 1;
+    const baseDirX = dx / distance;
+    const baseDirY = dy / distance;
+    const overhit = 4 + passRisk * 12 + Math.random() * 4;
+    const lateralError = (Math.random() * 2 - 1) * (2 + passRisk * 6);
+    const missTarget = {
+      x: passer.position.x + (distance + overhit) * baseDirX,
+      y: passer.position.y + (distance + overhit) * baseDirY + lateralError
+    };
+    const missVelocity = this.buildBallVelocity(state.ball.position, missTarget, 10 + (passSkill / 100) * 8);
 
     return {
-      type: outOfPlay ? 'out' : 'pass',
+      type: 'pass',
       teamId,
       playerId: passer.id,
       playerName: passer.name,
-      commentary,
+      targetPlayerName: receiver?.name,
+      commentary: `${passer.name}'s pass is off the mark.`,
       stats: {},
+      passStyle,
+      setPieceType: context?.setPiece,
       ballPosition: { ...passer.position },
-      ballVelocity: { x: 0, y: 0 },
-      restartType,
-      restartPosition,
-      restartTeamId,
+      ballVelocity: missVelocity,
       passRisk
     };
   }
@@ -422,6 +484,7 @@ export class RulesAgent {
     const distance = Math.hypot(goal.x - shooter.position.x, goal.y - shooter.position.y);
     const distanceFactor = clamp(1 - distance / (this.pitch.width * 0.9), 0.25, 1);
     const chanceQuality = distance <= 12 && shotSkill >= 55 ? 'big' : 'normal';
+    const shotStyle = this.getShotStyle(shooter, distance, instructions, context);
 
     let goalChance = (0.05 + (shotSkill / 100) * 0.25) * distanceFactor;
     goalChance *= playstyleMultiplier(shooter, 'power_shot', 1.08, 1.15);
@@ -512,9 +575,12 @@ export class RulesAgent {
         teamId,
         playerId: shooter.id,
         playerName: shooter.name,
+        turnoverPlayerName: block.player.name,
         commentary: `${block.player.name} gets in the way.`,
         stats: { shot: true },
         shotOutcome: 'blocked',
+        shotStyle,
+        setPieceType: context?.setPiece,
         ballPosition: { ...block.player.position },
         ballVelocity: deflectionVelocity,
         chanceQuality
@@ -531,6 +597,8 @@ export class RulesAgent {
         commentary: `Goal! ${shooter.name} finishes for ${this.resolveTeamName(state, teamId)}.`,
         stats: { shot: true, goal: true },
         shotOutcome: 'goal',
+        shotStyle,
+        setPieceType: context?.setPiece,
         ballPosition: { ...shooter.position },
         ballVelocity,
         restartType: 'kick_off',
@@ -540,16 +608,17 @@ export class RulesAgent {
       };
     }
 
+    let shotPower = this.getShotPower(shooter, context);
+    if (hasTrait(shooter, 'likes_to_lob_keeper') && distance <= 14) {
+      shotPower *= 0.92;
+    }
+    if (hasTrait(shooter, 'likes_to_round_keeper') && distance <= 12) {
+      shotPower *= 0.95;
+    }
+
     if (roll < onTargetChance) {
       const defendingTeamId = this.getOpponentTeamId(state, teamId);
       const goalkeeper = this.getGoalkeeper(state, defendingTeamId);
-      let shotPower = this.getShotPower(shooter, context);
-      if (hasTrait(shooter, 'likes_to_lob_keeper') && distance <= 14) {
-        shotPower *= 0.92;
-      }
-      if (hasTrait(shooter, 'likes_to_round_keeper') && distance <= 12) {
-        shotPower *= 0.95;
-      }
 
       if (goalkeeper) {
         const gkOutcome = this.resolveGoalkeeperOutcome(goalkeeper, shooter, distanceFactor, shotPower);
@@ -559,9 +628,13 @@ export class RulesAgent {
             teamId,
             playerId: shooter.id,
             playerName: shooter.name,
+            keeperName: goalkeeper.name,
             commentary: `${goalkeeper.name} gathers the shot.`,
             stats: { shot: true },
             shotOutcome: 'on_target',
+            shotStyle,
+            keeperAction: 'catch',
+            setPieceType: context?.setPiece,
             ballPosition: { ...goalkeeper.position },
             ballVelocity: { x: 0, y: 0 },
             chanceQuality,
@@ -579,9 +652,13 @@ export class RulesAgent {
               teamId,
               playerId: shooter.id,
               playerName: shooter.name,
+              keeperName: goalkeeper.name,
               commentary: `${goalkeeper.name} palms it wide for a corner.`,
               stats: { shot: true },
               shotOutcome: 'on_target',
+              shotStyle,
+              keeperAction: 'palm',
+              setPieceType: context?.setPiece,
               ballPosition: { ...shooter.position },
               ballVelocity,
               restartType: 'corner',
@@ -597,9 +674,13 @@ export class RulesAgent {
               teamId,
               playerId: shooter.id,
               playerName: shooter.name,
+              keeperName: goalkeeper.name,
               commentary: `${goalkeeper.name} parries into danger.`,
               stats: { shot: true },
               shotOutcome: 'on_target',
+              shotStyle,
+              keeperAction: 'parry',
+              setPieceType: context?.setPiece,
               ballPosition: { ...goalkeeper.position },
               ballVelocity: deflection,
               chanceQuality
@@ -612,9 +693,14 @@ export class RulesAgent {
               teamId,
               playerId: shooter.id,
               playerName: shooter.name,
+              keeperName: goalkeeper.name,
+              turnoverPlayerName: defender.name,
               commentary: `${goalkeeper.name} parries and ${defender.name} clears.`,
               stats: { shot: true },
               shotOutcome: 'on_target',
+              shotStyle,
+              keeperAction: 'parry',
+              setPieceType: context?.setPiece,
               ballPosition: { ...defender.position },
               ballVelocity: this.buildLooseBallVelocity(defender.position, 4.5),
               chanceQuality,
@@ -636,6 +722,8 @@ export class RulesAgent {
         commentary: `${shooter.name} forces a save.`,
         stats: { shot: true },
         shotOutcome: 'on_target',
+        shotStyle,
+        setPieceType: context?.setPiece,
         ballPosition: { ...shooter.position },
         ballVelocity,
         restartType: 'corner',
@@ -645,8 +733,12 @@ export class RulesAgent {
       };
     }
 
-    const restartPosition = this.getRestartPosition(state, 'goal_kick', teamId, shooter.position);
-    const restartTeamId = this.getRestartTeamId(state, 'goal_kick', teamId);
+    const missOffset = (Math.random() * 2 - 1) * (6 + distance * 0.08);
+    const missTarget = {
+      x: goal.x + (goal.x === 0 ? -6 : 6),
+      y: clamp(goal.y + missOffset, -5, this.pitch.height + 5)
+    };
+    const missVelocity = this.buildBallVelocity(shooter.position, missTarget, 12 + (shotPower / 100) * 10);
     return {
       type: 'shot',
       teamId,
@@ -655,13 +747,99 @@ export class RulesAgent {
       commentary: `${shooter.name} shoots, but it is wide.`,
       stats: { shot: true },
       shotOutcome: 'off_target',
+      shotStyle,
+      setPieceType: context?.setPiece,
       ballPosition: { ...shooter.position },
-      ballVelocity: { x: 0, y: 0 },
-      restartType: 'goal_kick',
-      restartPosition,
-      restartTeamId,
+      ballVelocity: missVelocity,
       chanceQuality
     };
+  }
+
+  private getPassStyle(
+    passer: PlayerState,
+    receiver: PlayerState | null,
+    instructions: TeamInstructions | undefined,
+    context: DecisionContext | undefined,
+    isCross: boolean
+  ): RuleDecision['passStyle'] {
+    if (!receiver) return 'long_ball';
+    const dx = receiver.position.x - passer.position.x;
+    const dy = receiver.position.y - passer.position.y;
+    const distance = Math.hypot(dx, dy);
+    const lateral = Math.abs(dy);
+    const directness = instructions?.passing_directness;
+
+    if (isCross) {
+      if (hasPlaystyle(passer, 'whipped_pass')) return 'whipped_cross';
+      if (instructions?.crossing_style === 'Low Crosses') return 'cutback';
+      return 'cross';
+    }
+
+    const avoidsThrough = hasTrait(passer, 'plays_no_through_balls');
+    const wantsThrough =
+      Boolean(context?.passLeadPosition) ||
+      hasTrait(passer, 'tries_killer_balls_often') ||
+      hasPlaystyle(passer, 'incisive_pass');
+    if (!avoidsThrough && wantsThrough) return 'through_ball';
+
+    const prefersOneTwo = hasTrait(passer, 'plays_one_twos') || hasPlaystyle(passer, 'tiki_taka');
+    if (prefersOneTwo && distance < 14) return 'one_two';
+
+    if (hasPlaystyle(passer, 'trivela') && distance > 16 && lateral > 8) return 'trivela';
+    if (hasPlaystyle(passer, 'inventive')) return 'no_look';
+
+    const isSwitch = lateral > this.pitch.height * 0.32 && distance > 24;
+    if (isSwitch) return 'switch';
+
+    const isLong =
+      distance >= 26 ||
+      directness === 'More Direct' ||
+      directness === 'Much More Direct' ||
+      hasPlaystyle(passer, 'long_ball_pass') ||
+      hasPlaystyle(passer, 'pinged_pass');
+    if (isLong) return 'long_ball';
+
+    if (distance <= 12) return 'short';
+    return 'ground';
+  }
+
+  private getShotStyle(
+    shooter: PlayerState,
+    distance: number,
+    instructions: TeamInstructions | undefined,
+    context: DecisionContext | undefined
+  ): RuleDecision['shotStyle'] {
+    if (context?.setPiece === 'penalty') return 'placed';
+    const overhead =
+      hasTrait(shooter, 'attempts_overhead_kicks') && distance <= 10 && Math.random() < 0.35;
+    if (overhead) return 'overhead';
+
+    const headerCandidate =
+      distance <= 12 &&
+      (hasPlaystyle(shooter, 'power_header') ||
+        hasPlaystyle(shooter, 'precision_header') ||
+        hasPlaystyle(shooter, 'aerial') ||
+        hasPlaystyle(shooter, 'aerial_fortress') ||
+        hasTrait(shooter, 'penalty_box_player'));
+    if (headerCandidate && Math.random() < 0.55) return 'header';
+
+    if ((hasPlaystyle(shooter, 'chip_shot') || hasTrait(shooter, 'likes_to_lob_keeper')) && distance <= 18) {
+      return 'chip';
+    }
+
+    if (hasPlaystyle(shooter, 'trivela')) return 'trivela';
+
+    if (hasPlaystyle(shooter, 'finesse_shot') || hasTrait(shooter, 'curls_ball')) return 'finesse';
+
+    if (hasPlaystyle(shooter, 'power_shot') || hasTrait(shooter, 'shoots_with_power')) return 'power';
+
+    if (hasPlaystyle(shooter, 'acrobatic') && distance <= 16) return 'volley';
+
+    if (distance >= 22 || instructions?.shots_from_distance === 'Encouraged') return 'long_range';
+
+    if (hasTrait(shooter, 'places_shots')) return 'placed';
+
+    return 'standard';
   }
 
   private maybeFoul(state: SimulationState, attackingTeamId: string): RuleDecision | null {
@@ -1337,6 +1515,10 @@ export class RulesAgent {
     const receiverAxis = this.getAttackAxis(receiver.position.x, direction);
     const ballAxis = this.getAttackAxis(state.ball.position.x, direction);
 
+    if (receiverAxis < this.pitch.width / 2) {
+      return false;
+    }
+
     const defenders = state.players.filter((player) => player.teamId !== teamId && isAvailable(player));
     const defenderAxes = defenders
       .map((player) => this.getAttackAxis(player.position.x, direction))
@@ -1407,11 +1589,10 @@ export class RulesAgent {
   private isInPenaltyArea(defendingTeamId: string, position: Vector2) {
     const boxDepth = 16.5;
     const boxHalfWidth = 20.16;
-    const goalX = defendingTeamId === this.homeTeamId ? 0 : this.pitch.width;
+    const goalX = this.getDefendingGoalX(defendingTeamId);
 
-    const withinX = defendingTeamId === this.homeTeamId
-      ? position.x <= goalX + boxDepth
-      : position.x >= goalX - boxDepth;
+    const withinX =
+      goalX === 0 ? position.x <= goalX + boxDepth : position.x >= goalX - boxDepth;
     const withinY = Math.abs(position.y - this.pitch.height / 2) <= boxHalfWidth;
 
     return withinX && withinY;
@@ -1462,7 +1643,8 @@ export class RulesAgent {
   }
 
   private getAttackDirection(teamId: string) {
-    return teamId === this.homeTeamId ? 1 : -1;
+    const base = teamId === this.homeTeamId ? 1 : -1;
+    return this.sidesSwitched ? -base : base;
   }
 
   private getAttackAxis(x: number, direction: number) {
@@ -1470,11 +1652,11 @@ export class RulesAgent {
   }
 
   private getAttackingGoalX(teamId: string) {
-    return teamId === this.homeTeamId ? this.pitch.width : 0;
+    return this.getAttackDirection(teamId) === 1 ? this.pitch.width : 0;
   }
 
   private getDefendingGoalX(teamId: string) {
-    return teamId === this.homeTeamId ? 0 : this.pitch.width;
+    return this.getAttackDirection(teamId) === 1 ? 0 : this.pitch.width;
   }
 
   private getOpponentTeamId(state: SimulationState, teamId: string) {

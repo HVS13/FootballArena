@@ -494,7 +494,7 @@ export const findMarkingTarget = (context: TacticalContext, player: SimPlayer) =
 };
 
 export const getDefendingGoalX = (context: TacticalContext, teamId: string) => {
-  return teamId === context.state.teams[0]?.id ? 0 : context.pitch.width;
+  return context.getAttackDirection(teamId) === 1 ? 0 : context.pitch.width;
 };
 
 export const isGoalkeeperRole = (player: SimPlayer) => {

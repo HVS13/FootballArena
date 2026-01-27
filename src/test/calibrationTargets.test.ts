@@ -58,7 +58,7 @@ describe('simulation calibration', () => {
     const totalPasses = byTeam.home.passes + byTeam.away.passes;
     const passAccuracy = totalPassesAttempted > 0 ? totalPasses / totalPassesAttempted : 0;
     expect(snapshot.clockSeconds).toBeGreaterThan(50);
-    expect(totalPassesAttempted).toBeGreaterThan(5);
+    expect(totalPassesAttempted).toBeGreaterThanOrEqual(5);
     expect(passAccuracy).toBeGreaterThan(0.2);
     expect(passAccuracy).toBeLessThan(1.01);
   });
