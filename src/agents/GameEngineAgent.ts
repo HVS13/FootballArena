@@ -645,12 +645,8 @@ export class GameEngineAgent {
     if (this.loopState.running) return;
     this.loopState.running = true;
     this.lastTime = performance.now();
-    if (this.matchPhase === 'pre_kickoff') {
-      const kickoffTeam = this.kickoffTeamIdFirstHalf ?? this.state.teams[0]?.id;
-      if (kickoffTeam) {
-        this.matchPhase = 'first_half';
-        this.beginKickoff(kickoffTeam);
-      }
+    if (this.matchPhase === 'pre_kickoff' || (this.state.time <= 0.01 && !this.restartState)) {
+      this.resetForKickoff();
     }
     requestAnimationFrame(this.loop);
   }
@@ -2103,6 +2099,36 @@ export class GameEngineAgent {
 
   private beginKickoff(teamId: string) {
     this.beginRestart('kick_off', teamId, { x: this.pitch.width / 2, y: this.pitch.height / 2 });
+  }
+
+  private resetForKickoff() {
+    const [homeTeam, awayTeam] = this.state.teams;
+    if (!homeTeam || !awayTeam) return;
+    if (!this.kickoffTeamIdFirstHalf) {
+      this.kickoffTeamIdFirstHalf = Math.random() < 0.5 ? homeTeam.id : awayTeam.id;
+      this.kickoffTeamIdSecondHalf =
+        this.kickoffTeamIdFirstHalf === homeTeam.id ? awayTeam.id : homeTeam.id;
+    }
+    this.state.time = 0;
+    if (this.sidesSwitched) {
+      this.rules.switchSides();
+      this.sidesSwitched = false;
+    }
+    this.matchPhase = 'first_half';
+    this.halfStartStats = this.cloneMatchStats(this.statsAgent.getStats());
+    this.restartState = null;
+    this.possession = null;
+    this.actionCooldown = 0;
+    this.state.ball.position = { x: this.pitch.width / 2, y: this.pitch.height / 2 };
+    this.state.ball.velocity = { x: 0, y: 0 };
+    this.state.players.forEach((player) => {
+      player.position = { ...player.homePosition };
+      player.velocity = { x: 0, y: 0 };
+      player.targetPosition = { ...player.homePosition };
+      player.tacticalPosition = { ...player.homePosition };
+      player.tacticalWander = 1;
+    });
+    this.beginKickoff(this.kickoffTeamIdFirstHalf);
   }
 
   private startRestart(decision: RuleDecision) {
