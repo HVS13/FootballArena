@@ -99,6 +99,9 @@ body {
   color: #bbf7d0;
   font-size: 12px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .match-stoppage {
@@ -109,6 +112,9 @@ body {
   color: #fecaca;
   font-size: 12px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .match-final {

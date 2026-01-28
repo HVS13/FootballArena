@@ -1,4 +1,5 @@
 import { SetPieceWizardSettings } from '../../data/setPieceWizard';
+import { TUNING } from '../../data/tuning';
 import { PitchDimensions, Vector2 } from '../../domain/simulationTypes';
 import { clamp } from './engineMath';
 import { SetPieceAssignments, SetPieceRoleScores, SimPlayer } from './engineTypes';
@@ -119,9 +120,20 @@ export const assignRecoveryPositions = (
 
 export const getRecoveryPositions = (context: SetPieceContext, teamId: string, count: number) => {
   const direction = context.getAttackDirection(teamId);
-  const baseX = context.pitch.width / 2 - direction * 14;
+  const recoveryQuality = getTeamRecoveryQuality(context, teamId);
+  const baseOffset = TUNING.setPiece.recovery.baseOffsetX * (1.1 - recoveryQuality * 0.2);
+  const baseX = context.pitch.width / 2 - direction * baseOffset;
   const midY = context.pitch.height / 2;
-  const offsets = count === 1 ? [0] : count === 2 ? [-8, 8] : count === 3 ? [-10, 0, 10] : [-12, -4, 4, 12];
+  const short = TUNING.setPiece.recovery.offsetShort;
+  const wide = TUNING.setPiece.recovery.offsetWide;
+  const offsets =
+    count === 1
+      ? [0]
+      : count === 2
+        ? [-short, short]
+        : count === 3
+          ? [-wide, 0, wide]
+          : [-wide, -short / 2, short / 2, wide];
 
   return offsets.slice(0, count).map((offset) => ({
     x: clamp(baseX, 1, context.pitch.width - 1),
@@ -238,11 +250,13 @@ export const getCornerDeliverySpot = (
   settings: SetPieceWizardSettings
 ) => {
   const goal = context.getGoalPosition(teamId);
+  const deliveryQuality = getTeamDeliveryQuality(context, teamId);
+  const qualityShift = (deliveryQuality - 0.5) * 2;
   const midY = context.pitch.height / 2;
   const cornerSide = cornerPosition.y < midY ? -1 : 1;
-  const baseX = goal.x === 0 ? 6 : context.pitch.width - 6;
-  const nearY = midY + cornerSide * 4.5;
-  const farY = midY - cornerSide * 4.5;
+  const baseX = goal.x === 0 ? TUNING.setPiece.corner.baseX : context.pitch.width - TUNING.setPiece.corner.baseX;
+  const nearY = midY + cornerSide * (TUNING.setPiece.corner.nearYOffset - qualityShift);
+  const farY = midY - cornerSide * (TUNING.setPiece.corner.farYOffset - qualityShift);
   const centreY = midY;
   const targetY =
     settings.deliveryTarget === 'near_post'
@@ -250,9 +264,11 @@ export const getCornerDeliverySpot = (
       : settings.deliveryTarget === 'far_post'
         ? farY
         : centreY;
-  const swingOffset = settings.deliverySwing === 'outswinger' ? (goal.x === 0 ? 1.2 : -1.2) : 0.4;
+  const swingBase = settings.deliverySwing === 'outswinger' ? TUNING.setPiece.corner.swingOut : TUNING.setPiece.corner.swingIn;
+  const swingOffset = goal.x === 0 ? swingBase : -swingBase;
+  const depthAdjust = clamp((0.6 - deliveryQuality) * 1.6, -0.8, 1.2);
   return {
-    x: clamp(baseX + swingOffset, 1, context.pitch.width - 1),
+    x: clamp(baseX + swingOffset + depthAdjust, 1, context.pitch.width - 1),
     y: clamp(targetY, 1, context.pitch.height - 1)
   };
 };
@@ -264,19 +280,23 @@ export const getFreeKickDeliverySpot = (
   settings: SetPieceWizardSettings
 ) => {
   const goal = context.getGoalPosition(teamId);
+  const deliveryQuality = getTeamDeliveryQuality(context, teamId);
+  const qualityShift = (deliveryQuality - 0.5) * 2;
   const midY = context.pitch.height / 2;
-  const baseX = goal.x === 0 ? 8 : context.pitch.width - 8;
-  const nearY = freeKickPosition.y < midY ? midY - 4 : midY + 4;
-  const farY = freeKickPosition.y < midY ? midY + 4 : midY - 4;
+  const baseX = goal.x === 0 ? TUNING.setPiece.freeKick.baseX : context.pitch.width - TUNING.setPiece.freeKick.baseX;
+  const nearY = freeKickPosition.y < midY ? midY - (TUNING.setPiece.freeKick.nearYOffset - qualityShift) : midY + (TUNING.setPiece.freeKick.nearYOffset - qualityShift);
+  const farY = freeKickPosition.y < midY ? midY + (TUNING.setPiece.freeKick.farYOffset - qualityShift) : midY - (TUNING.setPiece.freeKick.farYOffset - qualityShift);
   const targetY =
     settings.deliveryTarget === 'near_post'
       ? nearY
       : settings.deliveryTarget === 'far_post'
         ? farY
         : midY;
-  const swingOffset = settings.deliverySwing === 'outswinger' ? (goal.x === 0 ? 1.4 : -1.4) : 0.4;
+  const swingBase = settings.deliverySwing === 'outswinger' ? TUNING.setPiece.freeKick.swingOut : TUNING.setPiece.freeKick.swingIn;
+  const swingOffset = goal.x === 0 ? swingBase : -swingBase;
+  const depthAdjust = clamp((0.6 - deliveryQuality) * 1.8, -0.9, 1.4);
   return {
-    x: clamp(baseX + swingOffset, 1, context.pitch.width - 1),
+    x: clamp(baseX + swingOffset + depthAdjust, 1, context.pitch.width - 1),
     y: clamp(targetY, 1, context.pitch.height - 1)
   };
 };
@@ -288,12 +308,12 @@ export const buildWallPositions = (context: SetPieceContext, ball: Vector2, goal
   const dirX = dx / length;
   const dirY = dy / length;
   const center = {
-    x: clamp(ball.x + dirX * 8, 1, context.pitch.width - 1),
-    y: clamp(ball.y + dirY * 8, 1, context.pitch.height - 1)
+    x: clamp(ball.x + dirX * TUNING.setPiece.wall.distance, 1, context.pitch.width - 1),
+    y: clamp(ball.y + dirY * TUNING.setPiece.wall.distance, 1, context.pitch.height - 1)
   };
   const perpX = -dirY;
   const perpY = dirX;
-  const spacing = 1.6;
+  const spacing = TUNING.setPiece.wall.spacing;
 
   return Array.from({ length: count }, (_, index) => {
     const offset = (index - (count - 1) / 2) * spacing;
@@ -312,13 +332,14 @@ export const getCornerTargetPositions = (
   settings: SetPieceWizardSettings,
   count: number
 ) => {
-  const baseX = goalX === 0 ? 6 : context.pitch.width - 6;
-  const farX = goalX === 0 ? 9 : context.pitch.width - 9;
-  const edgeX = goalX === 0 ? 18 : context.pitch.width - 18;
-  const nearY = midY + cornerSide * 4.5;
-  const farY = midY - cornerSide * 4.5;
+  const baseX = goalX === 0 ? TUNING.setPiece.corner.baseX : context.pitch.width - TUNING.setPiece.corner.baseX;
+  const farX = goalX === 0 ? TUNING.setPiece.corner.farX : context.pitch.width - TUNING.setPiece.corner.farX;
+  const edgeX = goalX === 0 ? TUNING.setPiece.corner.edgeX : context.pitch.width - TUNING.setPiece.corner.edgeX;
+  const nearY = midY + cornerSide * TUNING.setPiece.corner.nearYOffset;
+  const farY = midY - cornerSide * TUNING.setPiece.corner.farYOffset;
   const centreY = midY;
-  const swingOffset = settings.deliverySwing === 'outswinger' ? (goalX === 0 ? 1.2 : -1.2) : 0.4;
+  const swingBase = settings.deliverySwing === 'outswinger' ? TUNING.setPiece.corner.swingOut : TUNING.setPiece.corner.swingIn;
+  const swingOffset = goalX === 0 ? swingBase : -swingBase;
 
   const targets = [
     { x: baseX + swingOffset, y: nearY },
@@ -343,11 +364,11 @@ export const getCornerTargetPositions = (
 };
 
 export const getCornerZonePositions = (context: SetPieceContext, goalX: number, midY: number, cornerSide: number) => {
-  const zoneX = goalX === 0 ? 4.5 : context.pitch.width - 4.5;
+  const zoneX = goalX === 0 ? TUNING.setPiece.zones.x : context.pitch.width - TUNING.setPiece.zones.x;
   return [
-    { x: zoneX, y: midY + cornerSide * 3 },
+    { x: zoneX, y: midY + cornerSide * TUNING.setPiece.zones.yOffset },
     { x: zoneX, y: midY },
-    { x: zoneX, y: midY - cornerSide * 3 }
+    { x: zoneX, y: midY - cornerSide * TUNING.setPiece.zones.yOffset }
   ];
 };
 
@@ -362,8 +383,9 @@ export const assignPostCoverage = (
 ) => {
   if (settings.postCoverage === 'no_posts') return;
   const postX = goalX === 0 ? 0.8 : context.pitch.width - 0.8;
-  const nearPost = { x: postX, y: clamp(midY + cornerSide * 3, 1, context.pitch.height - 1) };
-  const farPost = { x: postX, y: clamp(midY - cornerSide * 3, 1, context.pitch.height - 1) };
+  const postOffset = TUNING.setPiece.zones.yOffset;
+  const nearPost = { x: postX, y: clamp(midY + cornerSide * postOffset, 1, context.pitch.height - 1) };
+  const farPost = { x: postX, y: clamp(midY - cornerSide * postOffset, 1, context.pitch.height - 1) };
   const targets = settings.postCoverage === 'both_posts' ? [nearPost, farPost] : [nearPost];
 
   targets.forEach((pos) => {
@@ -405,15 +427,43 @@ export const assignCounterOutlets = (
   if (!available.length) return;
   const sorted = available.slice().sort((a, b) => context.getAttribute(b, 'pace') - context.getAttribute(a, 'pace'));
   const direction = context.getAttackDirection(teamId);
-  const midX = context.pitch.width / 2 - direction * 8;
+  const midX = context.pitch.width / 2 - direction * TUNING.setPiece.outlet.baseOffsetX;
   const midY = context.pitch.height / 2;
 
   sorted.slice(0, count).forEach((player, index) => {
     positions.set(player.id, {
       x: clamp(midX, 1, context.pitch.width - 1),
-      y: clamp(midY + (index === 0 ? -8 : 8), 1, context.pitch.height - 1)
+      y: clamp(midY + (index === 0 ? -TUNING.setPiece.outlet.laneOffset : TUNING.setPiece.outlet.laneOffset), 1, context.pitch.height - 1)
     });
   });
+};
+
+const getTeamDeliveryQuality = (context: SetPieceContext, teamId: string) => {
+  const players = context.getActiveTeamPlayers(teamId).filter((player) => !context.isGoalkeeperRole(player));
+  if (!players.length) return 0.5;
+  let total = 0;
+  players.forEach((player) => {
+    const corners = context.getAttribute(player, 'corners');
+    const freeKick = context.getAttribute(player, 'free_kick_taking');
+    const crossing = context.getAttribute(player, 'crossing');
+    const technique = context.getAttribute(player, 'technique');
+    total += (corners + freeKick + crossing + technique) / 4;
+  });
+  return clamp(total / (players.length * 100), 0.3, 0.9);
+};
+
+const getTeamRecoveryQuality = (context: SetPieceContext, teamId: string) => {
+  const players = context.getActiveTeamPlayers(teamId).filter((player) => !context.isGoalkeeperRole(player));
+  if (!players.length) return 0.5;
+  let total = 0;
+  players.forEach((player) => {
+    const pace = context.getAttribute(player, 'pace');
+    const stamina = context.getAttribute(player, 'stamina');
+    const positioning = context.getAttribute(player, 'positioning');
+    const workRate = context.getAttribute(player, 'work_rate');
+    total += (pace + stamina + positioning + workRate) / 4;
+  });
+  return clamp(total / (players.length * 100), 0.3, 0.9);
 };
 
 const pickClosestPlayerToPosition = (

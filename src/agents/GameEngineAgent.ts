@@ -6,6 +6,7 @@ import { TeamSetupState } from '../domain/teamSetupTypes';
 import { getRoleDutyBehavior, RoleBehavior } from '../data/roleBehavior';
 import { getMatchImportanceWeight } from '../data/matchImportance';
 import { DEFAULT_SET_PIECE_SETTINGS, SetPieceWizardSettings } from '../data/setPieceWizard';
+import { TUNING } from '../data/tuning';
 import { clamp, cloneState, interpolateState } from './engine/engineMath';
 import {
   DecisionContext,
@@ -164,8 +165,6 @@ export type RestartInfo = {
 const MAX_SUBS = 5;
 const MAX_WINDOWS = 3;
 const WINDOW_GRACE_SECONDS = 30;
-const CONTROL_DISTANCE = 2.2;
-const CONTROL_SPEED = 2.4;
 const HALF_DURATION = 2700;
 const FULL_DURATION = 5400;
 const HALFTIME_BREAK = 60;
@@ -319,6 +318,8 @@ const buildDefaultState = (pitch: PitchDimensions): SimulationState => {
     ball: {
       position: { x: pitch.width / 2, y: pitch.height / 2 },
       velocity: { x: 0, y: 0 },
+      spin: { x: 0, y: 0 },
+      lastKickPower: 0,
       radius: 0.7
     },
     officials: buildOfficials(pitch)
@@ -389,6 +390,8 @@ const buildStateFromSetup = (pitch: PitchDimensions, setup: TeamSetupState): Sim
     ball: {
       position: { x: pitch.width / 2, y: pitch.height / 2 },
       velocity: { x: 0, y: 0 },
+      spin: { x: 0, y: 0 },
+      lastKickPower: 0,
       radius: 0.7
     },
     officials: buildOfficials(pitch)
@@ -571,6 +574,8 @@ export class GameEngineAgent {
       getGoalPosition: this.getGoalPosition.bind(this),
       getLineDepth: this.getLineDepth.bind(this),
       isInAttackingBox: this.isInAttackingBox.bind(this),
+      getTeamScore: this.getTeamScore.bind(this),
+      getOpponentTeamId: this.getOpponentTeamId.bind(this),
       hasPlaystyle: this.hasPlaystyle.bind(this),
       hasPlaystylePlus: this.hasPlaystylePlus.bind(this),
       getPlaystyleBonus: this.getPlaystyleBonus.bind(this),
@@ -586,6 +591,7 @@ export class GameEngineAgent {
       possession: this.possession,
       restartState: this.restartState,
       getTeamInstructions: this.getTeamInstructions.bind(this),
+      getTeamScore: this.getTeamScore.bind(this),
       getRoleBehavior: this.getRoleBehavior.bind(this),
       getRoleArchetypeProfile: this.getRoleArchetypeProfile.bind(this),
       getAttackDirection: this.getAttackDirection.bind(this),
@@ -805,8 +811,8 @@ export class GameEngineAgent {
         this.updateTacticalTargets();
         this.physics.step(this.state, dt);
         this.state.time += dt;
-        this.statsAgent.step(this.state, dt);
         this.tickEvents(dt);
+        this.statsAgent.step(this.state, dt, this.possession?.teamId ?? null);
         this.emitMinuteCommentary();
         this.updateMatchFlow();
         this.accumulator -= dt;
@@ -817,7 +823,7 @@ export class GameEngineAgent {
     const renderState = interpolateState(this.prevState, this.state, alpha);
     this.onRender?.(renderState);
     this.onMatchUpdate?.(
-      this.statsAgent.getStats(),
+      this.cloneMatchStats(this.statsAgent.getStats()),
       this.commentaryAgent.getLines(),
       this.getRestartInfo(),
       this.getMatchStatus()
@@ -1082,8 +1088,25 @@ export class GameEngineAgent {
     const distance = Math.hypot(dx, dy);
     const speed = Math.hypot(this.state.ball.velocity.x, this.state.ball.velocity.y);
 
-    if (distance <= CONTROL_DISTANCE) {
-      if (speed > CONTROL_SPEED && this.possession?.playerId !== closest.id) {
+    const firstTouch = this.getAttribute(closest, 'first_touch');
+    const technique = this.getAttribute(closest, 'technique');
+    const composure = this.getAttribute(closest, 'composure');
+    const agility = this.getAttribute(closest, 'agility');
+    const fatigue = clamp(closest.fatigue ?? 0, 0, 1);
+    const controlSkill = clamp((firstTouch + technique + composure + agility) / 400, 0, 1);
+    const controlDistance = clamp(
+      TUNING.control.baseDistance + controlSkill * 1.4 - fatigue * 0.4,
+      1.6,
+      TUNING.control.maxDistance
+    );
+    const controlSpeed = clamp(
+      TUNING.control.baseSpeed + controlSkill * 2.2 - fatigue * 0.6,
+      1.4,
+      TUNING.control.maxSpeed
+    );
+
+    if (distance <= controlDistance) {
+      if (speed > controlSpeed && this.possession?.playerId !== closest.id) {
         return;
       }
       this.possession = { teamId: closest.teamId, playerId: closest.id };
@@ -1111,6 +1134,8 @@ export class GameEngineAgent {
 
     this.state.ball.position = { x: nextX, y: nextY };
     this.state.ball.velocity = { ...possessor.velocity };
+    this.state.ball.spin = { x: 0, y: 0 };
+    this.state.ball.lastKickPower = 0;
   }
 
   private attemptDefensiveChallenge() {
@@ -1125,17 +1150,45 @@ export class GameEngineAgent {
       defender.position.x - possessor.position.x,
       defender.position.y - possessor.position.y
     );
-    if (distance > 2.8) return false;
-
-    const proximity = clamp(1 - distance / 2.8, 0, 1);
+    const pace = this.getAttribute(defender, 'pace');
+    const acceleration = this.getAttribute(defender, 'acceleration');
+    const aggression = this.getAttribute(defender, 'aggression');
+    const bravery = this.getAttribute(defender, 'bravery');
+    const decisions = this.getAttribute(defender, 'decisions');
     const defenderBehavior = this.getRoleBehavior(defender);
     const defenderInstructions = this.getTeamInstructions(defender.teamId);
     const pressBias = getPressBias(defenderInstructions);
-    const attemptChance = clamp(
-      0.03 + proximity * 0.2 + defenderBehavior.press * 0.12 + pressBias * 0.08,
-      0,
-      0.35
+    const scoreDiff = this.getTeamScore(defender.teamId) - this.getTeamScore(this.getOpponentTeamId(defender.teamId));
+    const minute = this.state.time / 60;
+    const chasingLate = scoreDiff < 0 ? clamp((minute - 55) / 25, 0, 1) : 0;
+    const protectingLate = scoreDiff > 0 ? clamp((minute - 70) / 20, 0, 1) : 0;
+    let urgency = clamp(chasingLate * 0.35 - protectingLate * 0.25, -0.3, 0.45);
+    if (defenderInstructions?.time_wasting === 'More Often' && scoreDiff > 0) {
+      urgency = clamp(urgency - 0.12, -0.3, 0.45);
+    }
+    const engageBoost = clamp((pace + acceleration) / 200, 0, 1) * 1.2;
+    const pressBoost = clamp(defenderBehavior.press + pressBias + urgency, -0.2, 1.25) * 1.1;
+    const maxEngageDistance = clamp(
+      TUNING.press.engageBase + engageBoost + pressBoost,
+      TUNING.press.engageMin,
+      TUNING.press.engageMax
     );
+    if (distance > maxEngageDistance) return false;
+
+    const proximity = clamp(1 - distance / maxEngageDistance, 0, 1);
+    const riskAppetite = clamp((aggression + bravery) / 200, 0, 1);
+    const discipline = clamp(decisions / 100, 0, 1);
+    let attemptChance = TUNING.press.attemptBase +
+        proximity * 0.3 +
+        defenderBehavior.press * 0.16 +
+        pressBias * 0.12 +
+        urgency * 0.18 +
+        riskAppetite * 0.06 -
+        discipline * 0.03 +
+        (this.getAttribute(defender, 'tackling') / 100) * 0.04;
+    if (defenderInstructions?.tackling === 'Aggressive') attemptChance += 0.04;
+    if (defenderInstructions?.tackling === 'Ease Off') attemptChance -= 0.04;
+    attemptChance = clamp(attemptChance, 0, TUNING.press.attemptMax);
     if (Math.random() > attemptChance) return false;
 
     const outcome = this.resolveTackleOutcome(possessor, defender, proximity, defenderInstructions);
@@ -1399,6 +1452,10 @@ export class GameEngineAgent {
 
   private getTeamInstructions(teamId: string) {
     return this.teamSetup?.teams.find((team) => team.id === teamId)?.instructions;
+  }
+
+  private getTeamScore(teamId: string) {
+    return this.statsAgent.getStats().byTeam[teamId]?.goals ?? 0;
   }
 
   private getSetPieceSettings(teamId: string): SetPieceWizardSettings {
@@ -1970,10 +2027,24 @@ export class GameEngineAgent {
     }
     if (decision.ballVelocity) {
       this.state.ball.velocity = { ...decision.ballVelocity };
+      if (!decision.ballSpin) {
+        this.state.ball.spin = { x: 0, y: 0 };
+      }
+      if (typeof decision.ballPower !== 'number') {
+        this.state.ball.lastKickPower = 0;
+      }
+    }
+    if (decision.ballSpin) {
+      this.state.ball.spin = { ...decision.ballSpin };
+    }
+    if (typeof decision.ballPower === 'number') {
+      this.state.ball.lastKickPower = decision.ballPower;
     }
     if (decision.restartPosition) {
       this.state.ball.position = { ...decision.restartPosition };
       this.state.ball.velocity = { x: 0, y: 0 };
+      this.state.ball.spin = { x: 0, y: 0 };
+      this.state.ball.lastKickPower = 0;
     }
     const stats = this.statsAgent.getStats();
     const opponentId = this.getOpponentTeamId(decision.teamId);
@@ -2062,6 +2133,8 @@ export class GameEngineAgent {
   private resetAfterGoal() {
     this.state.ball.position = { x: this.pitch.width / 2, y: this.pitch.height / 2 };
     this.state.ball.velocity = { x: 0, y: 0 };
+    this.state.ball.spin = { x: 0, y: 0 };
+    this.state.ball.lastKickPower = 0;
     this.state.players.forEach((player) => {
       player.position = { ...player.homePosition };
       player.velocity = { x: 0, y: 0 };
@@ -2090,6 +2163,8 @@ export class GameEngineAgent {
 
     this.state.ball.position = { ...restartPosition };
     this.state.ball.velocity = { x: 0, y: 0 };
+    this.state.ball.spin = { x: 0, y: 0 };
+    this.state.ball.lastKickPower = 0;
     this.alignPlayersForRestart();
     this.commentaryAgent.addLine(
       this.state.time,
@@ -2254,6 +2329,8 @@ export class GameEngineAgent {
     });
     this.state.ball.position = { x: this.pitch.width / 2, y: this.pitch.height / 2 };
     this.state.ball.velocity = { x: 0, y: 0 };
+    this.state.ball.spin = { x: 0, y: 0 };
+    this.state.ball.lastKickPower = 0;
   }
 
   private handleBallOutOfPlay() {
@@ -2787,6 +2864,8 @@ export class GameEngineAgent {
     this.possession = { teamId: restart.teamId, playerId: taker.id };
     this.state.ball.position = { ...restart.position };
     this.state.ball.velocity = { x: 0, y: 0 };
+    this.state.ball.spin = { x: 0, y: 0 };
+    this.state.ball.lastKickPower = 0;
     this.commentaryAgent.addLine(this.state.time, 'Play resumes.');
   }
 

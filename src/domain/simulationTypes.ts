@@ -54,6 +54,8 @@ export type PlayerState = {
 export type BallState = {
   position: Vector2;
   velocity: Vector2;
+  spin: Vector2;
+  lastKickPower: number;
   radius: number;
 };
 

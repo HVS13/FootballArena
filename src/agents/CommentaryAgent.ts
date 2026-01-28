@@ -636,7 +636,7 @@ export class CommentaryAgent {
   }
 
   getLines() {
-    return this.lines;
+    return [...this.lines];
   }
 
   private buildDecisionLine(decision: RuleDecision, context: CommentaryContext) {

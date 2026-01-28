@@ -38,9 +38,9 @@ export class StatsAgent {
     };
   }
 
-  step(state: SimulationState, dt: number) {
+  step(state: SimulationState, dt: number, possessionTeamId?: string | null) {
     this.stats.clockSeconds = state.time;
-    const possession = this.resolvePossession(state);
+    const possession = possessionTeamId ?? this.resolvePossession(state);
 
     if (possession) {
       this.stats.byTeam[possession].possessionSeconds += dt;

@@ -24,16 +24,19 @@ suite('simulation calibration (full match)', () => {
 
     let now = 0;
     const perfSpy = vi.spyOn(performance, 'now').mockImplementation(() => now);
-    const randomSpy = vi.spyOn(Math, 'random').mockImplementation(buildSeededRandom(20240113));
+    const seed = Number(process.env.CALIBRATION_SEED ?? 20240113);
+    const tickRate = Number(process.env.CALIBRATION_TICK ?? 20);
+    const simSpeed = Number(process.env.CALIBRATION_SPEED ?? 16);
+    const randomSpy = vi.spyOn(Math, 'random').mockImplementation(buildSeededRandom(seed));
     let snapshot: MatchStats | null = null;
 
     const engine = new GameEngineAgent({
-      tickRate: 20,
+      tickRate,
       onMatchUpdate: (stats) => {
         snapshot = stats;
       }
     });
-    engine.setSpeed(16);
+    engine.setSpeed(simSpeed);
 
     const engineState = (engine as unknown as { state: { ball: { position: { x: number; y: number } }; players: Array<{ position: { x: number; y: number } }> } })
       .state;
@@ -71,7 +74,7 @@ suite('simulation calibration (full match)', () => {
     expect(totalGoals).toBeGreaterThanOrEqual(0);
 
     if (process.env.CALIBRATION_FULL === '1') {
-      console.log('Calibration summary', {
+      console.log(`Calibration summary (seed ${seed}, tick ${tickRate}, speed ${simSpeed})`, {
         passesAttempted: { home: home.passesAttempted, away: away.passesAttempted },
         passAccuracy: {
           home: home.passesAttempted ? home.passes / home.passesAttempted : 0,

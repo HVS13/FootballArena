@@ -18,6 +18,8 @@ export type DecisionContext = {
   getGoalPosition: (teamId: string) => Vector2;
   getLineDepth: (x: number, direction: number) => number;
   isInAttackingBox: (teamId: string, position: Vector2) => boolean;
+  getTeamScore: (teamId: string) => number;
+  getOpponentTeamId: (teamId: string) => string;
   hasPlaystyle: (player: SimPlayer, id: string) => boolean;
   hasPlaystylePlus: (player: SimPlayer, id: string) => boolean;
   getPlaystyleBonus: (player: SimPlayer, id: string, base?: number, plus?: number) => number;
@@ -191,6 +193,21 @@ export const shouldCarryBall = (
   carryChance -= roleBehavior.hold * 0.08;
   carryChance += roleProfile.decision.carryBias;
 
+  const tempo = instructions?.tempo;
+  if (tempo === 'Higher') carryChance += 0.04;
+  if (tempo === 'Lower') carryChance -= 0.04;
+  const transition = instructions?.attacking_transition;
+  if (transition === 'Counter-Attack') carryChance += 0.05;
+  if (transition === 'Patient Build-Up') carryChance -= 0.05;
+
+  const opponentId = context.getOpponentTeamId(player.teamId);
+  const scoreDiff = context.getTeamScore(player.teamId) - context.getTeamScore(opponentId);
+  const minute = context.state.time / 60;
+  const chasingLate = scoreDiff < 0 ? clamp((minute - 55) / 25, 0, 1) : 0;
+  const protectingLate = scoreDiff > 0 ? clamp((minute - 70) / 20, 0, 1) : 0;
+  carryChance += chasingLate * 0.06;
+  carryChance -= protectingLate * 0.08;
+
   carryChance *= moraleFactor * (1 - fatigue * 0.25);
   carryChance *= 1 - clamp(pressure * 0.55, 0, 0.45);
   carryChance = clamp(carryChance, 0.08, 0.55);
@@ -251,14 +268,22 @@ export const shouldShoot = (
   const creativeBias = context.getCreativeFreedomBias(instructions);
   const moraleFactor = context.getMoraleFactor(player);
   const fatigue = player.fatigue ?? 0;
+  const opponentId = context.getOpponentTeamId(teamId);
+  const scoreDiff = context.getTeamScore(teamId) - context.getTeamScore(opponentId);
+  const minute = context.state.time / 60;
+  const chasingLate = scoreDiff < 0 ? clamp((minute - 50) / 30, 0, 1) : 0;
+  const protectingLate = scoreDiff > 0 ? clamp((minute - 70) / 20, 0, 1) : 0;
 
   const shotsInstruction = instructions?.shots_from_distance;
   let maxRange = shotsInstruction === 'Encouraged' ? 32 : shotsInstruction === 'Reduced' ? 22 : 26;
+  maxRange += 6;
   if (context.hasTrait(player, 'shoots_from_distance')) maxRange += 5;
   if (context.hasTrait(player, 'refrains_from_taking_long_shots')) maxRange -= 6;
+  maxRange += chasingLate * 4;
+  maxRange -= protectingLate * 3;
   if (distance > maxRange) return false;
 
-  let desire = 0.1 + (shotSkill / 100) * 0.35;
+  let desire = 0.18 + (shotSkill / 100) * 0.35;
   const distanceFactor = clamp(1 - distance / maxRange, 0.1, 1);
   desire *= distanceFactor + 0.4;
 
@@ -303,8 +328,24 @@ export const shouldShoot = (
   desire += creativeBias;
   desire *= moraleFactor * (1 - fatigue * 0.2);
 
+  const tempo = instructions?.tempo;
+  if (tempo === 'Higher') desire += 0.04;
+  if (tempo === 'Lower') desire -= 0.04;
+  const transition = instructions?.attacking_transition;
+  if (transition === 'Counter-Attack') desire += 0.05;
+  if (transition === 'Patient Build-Up') desire -= 0.06;
+  const directness = instructions?.passing_directness;
+  if (directness === 'More Direct') desire += 0.03;
+  if (directness === 'Much More Direct') desire += 0.05;
+  if (directness === 'Much Shorter') desire -= 0.04;
+
   desire += pressure * 0.08;
-  if (hasPassOption) desire -= 0.05;
+  if (hasPassOption) desire += chasingLate * 0.04;
+  desire += chasingLate * 0.12;
+  desire -= protectingLate * 0.1;
+  if (instructions?.time_wasting === 'More Often' && scoreDiff > 0) {
+    desire -= 0.06;
+  }
 
   desire = clamp(desire, 0.05, 0.7);
   return Math.random() < desire;
@@ -358,6 +399,13 @@ export const choosePassTarget = (
   const likesSwitch = context.hasTrait(passer, 'likes_to_switch_ball_to_other_flank');
   const oneTwos = context.hasTrait(passer, 'plays_one_twos');
   const midline = context.pitch.height / 2;
+  const opponentId = context.getOpponentTeamId(teamId);
+  const scoreDiff = context.getTeamScore(teamId) - context.getTeamScore(opponentId);
+  const minute = context.state.time / 60;
+  const chasingLate = scoreDiff < 0 ? clamp((minute - 50) / 30, 0, 1) : 0;
+  const protectingLate = scoreDiff > 0 ? clamp((minute - 70) / 20, 0, 1) : 0;
+  const tempo = instructions?.tempo;
+  const transition = instructions?.attacking_transition;
 
   const scored = candidates
     .map((receiver) => {
@@ -440,11 +488,22 @@ export const choosePassTarget = (
         forwardScore *= 1.15;
       }
 
-      forwardScore *= 1 + clamp(riskBias * 0.35 * fatigueRiskScale, -0.2, 0.25);
+      let urgencyBoost = chasingLate * 0.25 - protectingLate * 0.2;
+      if (tempo === 'Higher') urgencyBoost += 0.05;
+      if (tempo === 'Lower') urgencyBoost -= 0.05;
+      if (transition === 'Counter-Attack') urgencyBoost += 0.06;
+      if (transition === 'Patient Build-Up') urgencyBoost -= 0.08;
+      forwardScore *= 1 + clamp(riskBias * 0.35 * fatigueRiskScale + urgencyBoost, -0.2, 0.3);
       distanceScore *= 1 + clamp(roleBehavior.pass * 0.2, -0.12, 0.12);
 
       let score = 0.42 * distanceScore + 0.24 * opennessScore + 0.2 * forwardScore + sideBonus + runBonus;
       score *= clamp(rangeFactor, 0.6, 1.3);
+      if (chasingLate > 0.2 && context.isInAttackingBox(teamId, receiver.position)) {
+        score *= 1.08 + chasingLate * 0.1;
+      }
+      if (protectingLate > 0.2 && distance > desiredDistance * 1.1) {
+        score *= 0.92;
+      }
 
       if (context.rules.isOffsidePosition(context.state, teamId, receiver)) {
         score *= 0.25;
@@ -457,10 +516,21 @@ export const choosePassTarget = (
       return { receiver, score: Math.max(0, score) };
     })
     .filter((entry): entry is { receiver: SimPlayer; score: number } => Boolean(entry))
-    .filter((entry) => entry.score > 0.05)
+    .filter((entry) => entry.score > 0.02)
     .sort((a, b) => b.score - a.score);
 
-  if (!scored.length) return null;
+  if (!scored.length) {
+    let closest: SimPlayer | null = null;
+    let closestDist = Number.POSITIVE_INFINITY;
+    candidates.forEach((player) => {
+      const dist = Math.hypot(player.position.x - passer.position.x, player.position.y - passer.position.y);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = player;
+      }
+    });
+    return closest;
+  }
   const top = scored.slice(0, 5);
   const total = top.reduce((sum, entry) => sum + entry.score, 0);
   let roll = Math.random() * total;

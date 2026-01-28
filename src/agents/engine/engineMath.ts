@@ -30,7 +30,9 @@ export const cloneState = (state: SimulationState): SimulationState => ({
   ball: {
     ...state.ball,
     position: { ...state.ball.position },
-    velocity: { ...state.ball.velocity }
+    velocity: { ...state.ball.velocity },
+    spin: { ...state.ball.spin },
+    lastKickPower: state.ball.lastKickPower
   },
   officials: state.officials.map((official) => ({
     ...official,
@@ -55,7 +57,9 @@ export const interpolateState = (prev: SimulationState, next: SimulationState, a
       x: lerp(prev.ball.position.x, next.ball.position.x, alpha),
       y: lerp(prev.ball.position.y, next.ball.position.y, alpha)
     },
-    velocity: { ...next.ball.velocity }
+    velocity: { ...next.ball.velocity },
+    spin: { ...next.ball.spin },
+    lastKickPower: next.ball.lastKickPower
   },
   officials: next.officials.map((official, index) => ({
     ...official,

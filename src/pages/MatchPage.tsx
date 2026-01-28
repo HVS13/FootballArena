@@ -510,10 +510,10 @@ const MatchPage = () => {
           <div role="status" aria-live="polite">
             Match Time: {renderState ? formatClock(renderState.time) : '00:00'}
             <span className="match-phase">{phaseLabel}</span>
+            {stoppageLabel && <span className="match-stoppage">Stoppage {stoppageLabel}</span>}
           </div>
           <div aria-live="polite">
             Speed: x{state.simSpeed}
-            {stoppageLabel && <span className="match-stoppage">Stoppage {stoppageLabel}</span>}
           </div>
         </div>
         {controlsDisabled && (

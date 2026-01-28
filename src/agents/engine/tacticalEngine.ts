@@ -1,6 +1,7 @@
 import { PitchDimensions, SimulationState, Vector2 } from '../../domain/simulationTypes';
 import { RoleBehavior } from '../../data/roleBehavior';
 import { clamp, lerp } from './engineMath';
+import { TUNING } from '../../data/tuning';
 import { PossessionState, RestartState, RoleArchetypeProfile, SimPlayer } from './engineTypes';
 
 export type TacticalContext = {
@@ -9,11 +10,19 @@ export type TacticalContext = {
   possession: PossessionState | null;
   restartState: RestartState | null;
   getTeamInstructions: (teamId: string) => Record<string, string> | undefined;
+  getTeamScore: (teamId: string) => number;
   getRoleBehavior: (player: SimPlayer) => RoleBehavior;
   getRoleArchetypeProfile: (player: SimPlayer) => RoleArchetypeProfile;
   getAttackDirection: (teamId: string) => number;
   getAttribute: (player: SimPlayer, id: string, fallback?: number) => number;
   hasTrait: (player: SimPlayer, id: string) => boolean;
+};
+
+type TeamProfile = {
+  speed: number;
+  defensiveIQ: number;
+  aggression: number;
+  workRate: number;
 };
 
 export const updateTacticalTargets = (context: TacticalContext) => {
@@ -27,21 +36,39 @@ export const updateTacticalTargets = (context: TacticalContext) => {
 
   const possessionTeamId = context.possession?.teamId ?? null;
   const possessorId = context.possession?.playerId ?? null;
+  const possessor =
+    possessorId ? context.state.players.find((player) => player.id === possessorId) ?? null : null;
   const ball = context.state.ball.position;
+  const pressTarget = possessor?.position ?? ball;
   const midY = context.pitch.height / 2;
   const teamShape = new Map<string, { defensiveLineAxis: number; engagementAxis: number; pressTrigger: number }>();
   const teamMarking = new Map<string, Map<string, SimPlayer>>();
+  const pressingAssignments = new Map<string, { target: Vector2; intensity: number }>();
+  const looseBallAssignments = possessionTeamId ? null : buildLooseBallAssignments(context, ball);
+  const teamProfiles = new Map<string, TeamProfile>();
+
+  context.state.teams.forEach((team) => {
+    teamProfiles.set(team.id, buildTeamProfile(context, team.id));
+  });
 
   context.state.teams.forEach((team) => {
     const instructions = context.getTeamInstructions(team.id);
     const direction = context.getAttackDirection(team.id);
+    const profile = teamProfiles.get(team.id) ?? { speed: 0.5, defensiveIQ: 0.5, aggression: 0.5, workRate: 0.5 };
     teamShape.set(team.id, {
-      defensiveLineAxis: getDefensiveLineAxis(instructions?.defensive_line),
-      engagementAxis: getLineOfEngagementAxis(instructions?.line_of_engagement),
-      pressTrigger: getPressTrigger(context, instructions, direction, ball)
+      defensiveLineAxis: getDefensiveLineAxis(instructions?.defensive_line, profile),
+      engagementAxis: getLineOfEngagementAxis(instructions?.line_of_engagement, profile),
+      pressTrigger: getPressTrigger(context, instructions, direction, ball, profile)
     });
     if (possessionTeamId && possessionTeamId !== team.id) {
       teamMarking.set(team.id, buildMarkingAssignments(context, team.id, direction));
+      buildPressingAssignments(
+        context,
+        team.id,
+        pressTarget,
+        instructions,
+        pressingAssignments
+      );
     }
   });
 
@@ -223,9 +250,15 @@ export const updateTacticalTargets = (context: TacticalContext) => {
       }
     } else if (possessionTeamId) {
       const pressBias = getPressBias(instructions);
+      const opponentId = getOpponentTeamId(context, player.teamId);
+      const scoreDiff = opponentId ? context.getTeamScore(player.teamId) - context.getTeamScore(opponentId) : 0;
+      const minute = context.state.time / 60;
+      const chasingLate = scoreDiff < 0 ? clamp((minute - 55) / 25, 0, 1) : 0;
+      const protectingLate = scoreDiff > 0 ? clamp((minute - 70) / 20, 0, 1) : 0;
+      const urgency = clamp(chasingLate * 0.3 - protectingLate * 0.22, -0.3, 0.35);
       const pressTrigger = shape?.pressTrigger ?? 1;
       const pressPull = clamp(
-        (behavior.press + pressBias + roleProfile.outOfPossession.pressBias) * pressTrigger,
+        (behavior.press + pressBias + roleProfile.outOfPossession.pressBias + urgency) * pressTrigger,
         0,
         1.1
       );
@@ -240,6 +273,14 @@ export const updateTacticalTargets = (context: TacticalContext) => {
         const lineWeight = 0.25 + behavior.retreat * 0.25 + (1 - behavior.roam) * 0.1;
         anchorX = lerp(anchorX, lineTargetX, clamp(lineWeight, 0.2, 0.55));
       }
+
+      const defensiveLine = instructions?.defensive_line;
+      let lineScale = 1;
+      if (defensiveLine === 'Deeper') lineScale = 0.8;
+      if (defensiveLine === 'Higher') lineScale = 1.1;
+      if (defensiveLine === 'Much Higher') lineScale = 1.2;
+      const lineAdjust = clamp((chasingLate * 1.4 - protectingLate * 1.8) * lineScale, -2, 2);
+      anchorX += direction * lineAdjust;
 
       const lineBehavior = instructions?.defensive_line_behaviour;
       if (lineBehavior === 'Offside Trap') {
@@ -258,6 +299,27 @@ export const updateTacticalTargets = (context: TacticalContext) => {
         anchorX = lerp(anchorX, markingTarget.position.x, markStrength);
         anchorY = lerp(anchorY, markingTarget.position.y, markStrength);
       }
+
+      const pressAssignment = pressingAssignments.get(player.id);
+      if (pressAssignment) {
+        const pressWeight = 0.12 + pressAssignment.intensity * 0.35;
+        anchorX = lerp(anchorX, pressAssignment.target.x, pressWeight);
+        anchorY = lerp(anchorY, pressAssignment.target.y, pressWeight);
+        player.tacticalWander = clamp((player.tacticalWander ?? 1) * 0.8, 0.4, 1.2);
+        if (pressAssignment.intensity > 0.7) {
+          player.targetPosition = { ...pressAssignment.target };
+          player.targetTimer = Math.min(player.targetTimer, 0.35);
+        }
+      }
+    } else if (looseBallAssignments && looseBallAssignments.has(player.id)) {
+      const intensity = looseBallAssignments.get(player.id) ?? 0;
+      anchorX = lerp(anchorX, ball.x, 0.12 + intensity * 0.3);
+      anchorY = lerp(anchorY, ball.y, 0.12 + intensity * 0.3);
+      player.tacticalWander = clamp((player.tacticalWander ?? 1) * 0.7, 0.35, 1.1);
+      if (intensity > 0.7) {
+        player.targetPosition = { ...ball };
+        player.targetTimer = Math.min(player.targetTimer, 0.35);
+      }
     }
 
     anchorX = clamp(anchorX, player.radius, context.pitch.width - player.radius);
@@ -269,6 +331,10 @@ export const updateTacticalTargets = (context: TacticalContext) => {
     wander += inPossession ? roleProfile.inPossession.wanderBias : roleProfile.outOfPossession.wanderBias;
     if (!inPossession && possessionTeamId) {
       wander -= 0.05;
+      const pressAssignment = pressingAssignments.get(player.id);
+      if (pressAssignment) {
+        wander -= pressAssignment.intensity * 0.2;
+      }
     }
     const versatility = context.getAttribute(player, 'versatility');
     const versatilityFactor = 0.85 + (versatility / 100) * 0.3;
@@ -282,6 +348,162 @@ export const updateTacticalTargets = (context: TacticalContext) => {
   });
 };
 
+const buildTeamProfile = (context: TacticalContext, teamId: string): TeamProfile => {
+  const players = context.state.players.filter((player) => player.teamId === teamId && !player.discipline?.red);
+  if (!players.length) {
+    return { speed: 0.5, defensiveIQ: 0.5, aggression: 0.5, workRate: 0.5 };
+  }
+  let pace = 0;
+  let acceleration = 0;
+  let positioning = 0;
+  let decisions = 0;
+  let aggression = 0;
+  let workRate = 0;
+  players.forEach((player) => {
+    pace += context.getAttribute(player, 'pace');
+    acceleration += context.getAttribute(player, 'acceleration');
+    positioning += context.getAttribute(player, 'positioning');
+    decisions += context.getAttribute(player, 'decisions');
+    aggression += context.getAttribute(player, 'aggression');
+    workRate += context.getAttribute(player, 'work_rate');
+  });
+  const count = players.length;
+  const speed = clamp((pace + acceleration) / (count * 200), 0, 1);
+  const defensiveIQ = clamp((positioning + decisions) / (count * 200), 0, 1);
+  const aggressionScore = clamp(aggression / (count * 100), 0, 1);
+  const workRateScore = clamp(workRate / (count * 100), 0, 1);
+  return {
+    speed,
+    defensiveIQ,
+    aggression: aggressionScore,
+    workRate: workRateScore
+  };
+};
+
+const buildPressingAssignments = (
+  context: TacticalContext,
+  teamId: string,
+  target: Vector2,
+  instructions: Record<string, string> | undefined,
+  assignments: Map<string, { target: Vector2; intensity: number }>
+) => {
+  const pressBias = getPressBias(instructions);
+  const opponentId = getOpponentTeamId(context, teamId);
+  const scoreDiff = opponentId ? context.getTeamScore(teamId) - context.getTeamScore(opponentId) : 0;
+  const minute = context.state.time / 60;
+  const chasingLate = scoreDiff < 0 ? clamp((minute - 55) / 25, 0, 1) : 0;
+  const protectingLate = scoreDiff > 0 ? clamp((minute - 70) / 20, 0, 1) : 0;
+  const neutralLate = scoreDiff === 0 ? clamp((minute - 65) / 25, 0, 1) * 0.1 : 0;
+  let urgency = chasingLate * 0.35 + neutralLate - protectingLate * 0.25;
+  if (instructions?.time_wasting === 'More Often' && scoreDiff > 0) {
+    urgency -= 0.15;
+  }
+  if (instructions?.pressing_trap === 'Active') {
+    const midY = context.pitch.height / 2;
+    const wideZone = Math.abs(target.y - midY) > context.pitch.height * 0.32;
+    if (wideZone) urgency += 0.12;
+  }
+  urgency = clamp(urgency, -0.3, 0.45);
+
+  let pressCount = pressBias > 0.2 ? 3 : pressBias < -0.15 ? 1 : 2;
+  if (urgency > 0.2) pressCount += 1;
+  if (urgency < -0.2) pressCount -= 1;
+  if (instructions?.pressing_trap === 'Active') {
+    pressCount += 1;
+  }
+  pressCount = Math.round(clamp(pressCount, 1, 3));
+  const candidates = context.state.players.filter(
+    (player) => player.teamId === teamId && !player.discipline?.red && !isGoalkeeperRole(player)
+  );
+
+  if (!candidates.length) return;
+
+  const scored = candidates.map((player) => {
+    const behavior = context.getRoleBehavior(player);
+    const profile = context.getRoleArchetypeProfile(player);
+    const aggression = context.getAttribute(player, 'aggression');
+    const workRate = context.getAttribute(player, 'work_rate');
+    const acceleration = context.getAttribute(player, 'acceleration');
+    const anticipation = context.getAttribute(player, 'anticipation');
+    const bravery = context.getAttribute(player, 'bravery');
+    const decisions = context.getAttribute(player, 'decisions');
+    const pressSkill = clamp((aggression + workRate + acceleration + anticipation) / 400, 0, 1);
+    const riskAppetite = clamp((aggression + bravery) / 200, 0, 1);
+    const discipline = clamp(decisions / 100, 0, 1);
+    const dist = Math.hypot(target.x - player.position.x, target.y - player.position.y);
+    const distScore = 1 / (1 + dist);
+    const pressFactor = clamp(behavior.press + profile.outOfPossession.pressBias + pressBias, -0.2, 1.2);
+    const score =
+      distScore *
+      (0.6 + pressSkill * 0.8 + pressFactor + riskAppetite * 0.2 + urgency * 0.2 - discipline * 0.08);
+    return { player, score, pressSkill, pressFactor, riskAppetite, discipline };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  scored.slice(0, pressCount).forEach((entry, index) => {
+    const intensityBase = 0.35 + entry.pressSkill * 0.45 + entry.pressFactor * 0.25;
+    const intensity =
+      clamp(
+        intensityBase +
+          (index === 0 ? 0.1 : 0) +
+          entry.riskAppetite * 0.12 +
+          urgency * 0.22 -
+          entry.discipline * 0.06,
+        0.25,
+        0.95
+      );
+    assignments.set(entry.player.id, { target: { ...target }, intensity });
+  });
+};
+
+const getOpponentTeamId = (context: TacticalContext, teamId: string) => {
+  const team = context.state.teams.find((entry) => entry.id === teamId);
+  if (!team) return null;
+  const opponent = context.state.teams.find((entry) => entry.id !== teamId);
+  return opponent?.id ?? null;
+};
+
+const buildLooseBallAssignments = (context: TacticalContext, ball: Vector2) => {
+  const assignments = new Map<string, number>();
+  context.state.teams.forEach((team) => {
+    const instructions = context.getTeamInstructions(team.id);
+    const transition = instructions?.defensive_transition;
+    const players = context.state.players.filter(
+      (player) => player.teamId === team.id && !player.discipline?.red && !isGoalkeeperRole(player)
+    );
+    if (!players.length) return;
+    const sorted = players
+      .map((player) => {
+        const distance = Math.hypot(player.position.x - ball.x, player.position.y - ball.y);
+        const acceleration = context.getAttribute(player, 'acceleration');
+        const anticipation = context.getAttribute(player, 'anticipation');
+        const bravery = context.getAttribute(player, 'bravery');
+        const workRate = context.getAttribute(player, 'work_rate');
+        const behavior = context.getRoleBehavior(player);
+        const fatigue = clamp(player.fatigue ?? 0, 0, 1);
+        const physicalScore =
+          0.6 +
+          (acceleration / 100) * 0.4 +
+          (anticipation / 100) * 0.3 +
+          (bravery / 100) * 0.2 +
+          (workRate / 100) * 0.2;
+        let contestScore = (1 / (1 + distance)) * physicalScore * (0.9 + behavior.press * 0.2);
+        if (transition === 'Counter-Press') contestScore *= 1.08;
+        if (transition === 'Regroup') contestScore *= 0.9;
+        const score = contestScore * (1 - fatigue * 0.4);
+        return { player, distance, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2);
+    sorted.forEach((entry, index) => {
+      const base = index === 0 ? 0.8 : 0.55;
+      const intensity = clamp(base + entry.score * 0.4, 0.4, 0.95);
+      assignments.set(entry.player.id, intensity);
+    });
+  });
+  return assignments;
+};
+
 export const getLineDepth = (context: TacticalContext, x: number, direction: number) => {
   const axis = getAttackAxis(context, x, direction);
   return clamp(axis / context.pitch.width, 0, 1);
@@ -291,38 +513,38 @@ export const getAttackAxis = (context: TacticalContext, x: number, direction: nu
   return direction === 1 ? x : context.pitch.width - x;
 };
 
-export const getLineOfEngagementAxis = (value?: string) => {
-  switch (value) {
-    case 'High Press':
-      return 62;
-    case 'Low Block':
-      return 42;
-    case 'Mid Block':
-    default:
-      return 52;
-  }
+export const getLineOfEngagementAxis = (value: string | undefined, profile?: TeamProfile) => {
+  const safeProfile = profile ?? { speed: 0.5, defensiveIQ: 0.5, aggression: 0.5, workRate: 0.5 };
+  let base = TUNING.line.engagementAxis.mid;
+  if (value === 'High Press') base = TUNING.line.engagementAxis.high;
+  if (value === 'Low Block') base = TUNING.line.engagementAxis.low;
+  const speedShift = (safeProfile.speed - 0.5) * TUNING.line.speedShift;
+  const iqShift = (safeProfile.defensiveIQ - 0.5) * TUNING.line.positioningShift;
+  const modifier = value === 'Low Block' ? 0.6 : value === 'High Press' ? 1 : 0.8;
+  return clamp(base + (speedShift + iqShift) * modifier, 38, 66);
 };
 
-export const getDefensiveLineAxis = (value?: string) => {
-  switch (value) {
-    case 'Deeper':
-      return 22;
-    case 'Higher':
-      return 32;
-    case 'Much Higher':
-      return 38;
-    default:
-      return 27;
-  }
+export const getDefensiveLineAxis = (value: string | undefined, profile?: TeamProfile) => {
+  const safeProfile = profile ?? { speed: 0.5, defensiveIQ: 0.5, aggression: 0.5, workRate: 0.5 };
+  let base = TUNING.line.defensiveAxis.standard;
+  if (value === 'Deeper') base = TUNING.line.defensiveAxis.deeper;
+  if (value === 'Higher') base = TUNING.line.defensiveAxis.higher;
+  if (value === 'Much Higher') base = TUNING.line.defensiveAxis.muchHigher;
+  const speedShift = (safeProfile.speed - 0.5) * TUNING.line.speedShift;
+  const iqShift = (safeProfile.defensiveIQ - 0.5) * TUNING.line.positioningShift;
+  const aggressionShift = (safeProfile.aggression - 0.5) * 1.5;
+  const modifier = value === 'Deeper' ? 0.7 : value === 'Much Higher' ? 1.1 : 0.9;
+  return clamp(base + (speedShift + iqShift + aggressionShift) * modifier, 18, 42);
 };
 
 export const getPressTrigger = (
   context: TacticalContext,
   instructions: Record<string, string> | undefined,
   direction: number,
-  ball: Vector2
+  ball: Vector2,
+  profile: TeamProfile
 ) => {
-  const engagementAxis = getLineOfEngagementAxis(instructions?.line_of_engagement);
+  const engagementAxis = getLineOfEngagementAxis(instructions?.line_of_engagement, profile);
   const ballAxis = getAttackAxis(context, ball.x, direction);
   const delta = (ballAxis - engagementAxis) / 18;
   return clamp(1 + delta, 0.6, 1.35);

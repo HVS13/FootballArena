@@ -1,4 +1,5 @@
 import { EnvironmentState, DEFAULT_ENVIRONMENT } from '../domain/environmentTypes';
+import { TUNING } from '../data/tuning';
 import { PitchDimensions, PlayerState, SimulationState, Vector2 } from '../domain/simulationTypes';
 
 type TeamInstructions = Record<string, string>;
@@ -65,6 +66,8 @@ export type RuleDecision = {
   turnoverPlayerId?: string;
   turnoverTeamId?: string;
   turnoverReason?: 'interception' | 'miscontrol' | 'tackle';
+  ballSpin?: Vector2;
+  ballPower?: number;
 };
 
 type RuleConfig = {
@@ -75,7 +78,6 @@ type RuleConfig = {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-const PRESSURE_DISTANCE = 6;
 
 const average = (...values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
 
@@ -166,6 +168,24 @@ export class RulesAgent {
       passWeight *= 1.08;
     } else if (passingInstruction === 'Much More Direct') {
       passWeight *= 0.95;
+    }
+
+    const tempo = instructions?.tempo;
+    if (tempo === 'Higher') {
+      shotWeight *= 1.05;
+      passWeight *= 0.98;
+    } else if (tempo === 'Lower') {
+      shotWeight *= 0.95;
+      passWeight *= 1.04;
+    }
+
+    const transition = instructions?.attacking_transition;
+    if (transition === 'Counter-Attack') {
+      shotWeight *= 1.06;
+      passWeight *= 0.97;
+    } else if (transition === 'Patient Build-Up') {
+      shotWeight *= 0.94;
+      passWeight *= 1.05;
     }
 
     passWeight *= playstyleMultiplier(player, 'tiki_taka', 1.08, 1.12);
@@ -334,10 +354,19 @@ export class RulesAgent {
             7
           )
         : target;
+    const passPower = this.getPassPower(passer, instructions, passStyle);
+    const passSpeed =
+      (TUNING.physics.passSpeedBase + (passSkill / 100) * TUNING.physics.passSpeedSkillScale) *
+      (0.85 + passPower * 0.35);
+    const passSpinMag = this.getPassSpinMagnitude(passer, passStyle);
     const ballVelocity =
       success && !intercepted
-        ? this.buildBallVelocity(state.ball.position, passTarget, 10 + (passSkill / 100) * 8)
+        ? this.buildBallVelocity(state.ball.position, passTarget, passSpeed)
         : { x: 0, y: 0 };
+    const ballSpin =
+      success && !intercepted && passSpinMag > 0
+        ? this.getSpinVector(state.ball.position, passTarget, passSpinMag)
+        : undefined;
 
     if (intercepted && interceptCandidate) {
       return {
@@ -354,6 +383,7 @@ export class RulesAgent {
         ballPosition: { ...interceptCandidate.player.position },
         ballVelocity: { x: 0, y: 0 },
         passRisk,
+        ballPower: passPower,
         turnoverPlayerId: interceptCandidate.player.id,
         turnoverTeamId: interceptCandidate.player.teamId,
         turnoverReason: 'interception'
@@ -424,6 +454,8 @@ export class RulesAgent {
         setPieceType: context?.setPiece,
         ballPosition: { ...passer.position },
         ballVelocity,
+        ballSpin,
+        ballPower: passPower,
         passRisk
       };
     }
@@ -439,7 +471,8 @@ export class RulesAgent {
       x: passer.position.x + (distance + overhit) * baseDirX,
       y: passer.position.y + (distance + overhit) * baseDirY + lateralError
     };
-    const missVelocity = this.buildBallVelocity(state.ball.position, missTarget, 10 + (passSkill / 100) * 8);
+    const missVelocity = this.buildBallVelocity(state.ball.position, missTarget, passSpeed * 1.05);
+    const missSpin = passSpinMag > 0 ? this.getSpinVector(state.ball.position, missTarget, passSpinMag) : undefined;
 
     return {
       type: 'pass',
@@ -453,6 +486,8 @@ export class RulesAgent {
       setPieceType: context?.setPiece,
       ballPosition: { ...passer.position },
       ballVelocity: missVelocity,
+      ballSpin: missSpin,
+      ballPower: passPower,
       passRisk
     };
   }
@@ -565,7 +600,19 @@ export class RulesAgent {
       this.getShotScatter(shooter, distanceFactor, context),
       5.5
     );
-    const ballVelocity = this.buildBallVelocity(state.ball.position, shotTarget, 14 + (shotSkill / 100) * 10);
+    let shotPower = this.getShotPower(shooter, context);
+    if (hasTrait(shooter, 'likes_to_lob_keeper') && distance <= 14) {
+      shotPower *= 0.92;
+    }
+    if (hasTrait(shooter, 'likes_to_round_keeper') && distance <= 12) {
+      shotPower *= 0.95;
+    }
+    const shotSpeed =
+      (TUNING.physics.shotSpeedBase + (shotSkill / 100) * TUNING.physics.shotSpeedSkillScale) *
+      (0.8 + shotPower * 0.4);
+    const shotSpinMag = this.getShotSpinMagnitude(shooter, shotStyle);
+    const ballVelocity = this.buildBallVelocity(state.ball.position, shotTarget, shotSpeed);
+    const ballSpin = shotSpinMag > 0 ? this.getSpinVector(state.ball.position, shotTarget, shotSpinMag) : undefined;
 
     const block = this.getBlockCandidate(state, shooter, teamId);
     if (block && Math.random() < block.chance) {
@@ -583,6 +630,7 @@ export class RulesAgent {
         setPieceType: context?.setPiece,
         ballPosition: { ...block.player.position },
         ballVelocity: deflectionVelocity,
+        ballPower: shotPower,
         chanceQuality
       };
     }
@@ -601,19 +649,13 @@ export class RulesAgent {
         setPieceType: context?.setPiece,
         ballPosition: { ...shooter.position },
         ballVelocity,
+        ballSpin,
+        ballPower: shotPower,
         restartType: 'kick_off',
         restartPosition: this.getKickoffSpot(),
         restartTeamId,
         chanceQuality
       };
-    }
-
-    let shotPower = this.getShotPower(shooter, context);
-    if (hasTrait(shooter, 'likes_to_lob_keeper') && distance <= 14) {
-      shotPower *= 0.92;
-    }
-    if (hasTrait(shooter, 'likes_to_round_keeper') && distance <= 12) {
-      shotPower *= 0.95;
     }
 
     if (roll < onTargetChance) {
@@ -661,6 +703,8 @@ export class RulesAgent {
               setPieceType: context?.setPiece,
               ballPosition: { ...shooter.position },
               ballVelocity,
+              ballSpin,
+              ballPower: shotPower,
               restartType: 'corner',
               restartPosition,
               restartTeamId,
@@ -683,6 +727,7 @@ export class RulesAgent {
               setPieceType: context?.setPiece,
               ballPosition: { ...goalkeeper.position },
               ballVelocity: deflection,
+              ballPower: shotPower,
               chanceQuality
             };
           }
@@ -703,6 +748,7 @@ export class RulesAgent {
               setPieceType: context?.setPiece,
               ballPosition: { ...defender.position },
               ballVelocity: this.buildLooseBallVelocity(defender.position, 4.5),
+              ballPower: shotPower,
               chanceQuality,
               turnoverPlayerId: defender.id,
               turnoverTeamId: defender.teamId,
@@ -726,6 +772,8 @@ export class RulesAgent {
         setPieceType: context?.setPiece,
         ballPosition: { ...shooter.position },
         ballVelocity,
+        ballSpin,
+        ballPower: shotPower,
         restartType: 'corner',
         restartPosition,
         restartTeamId,
@@ -738,7 +786,8 @@ export class RulesAgent {
       x: goal.x + (goal.x === 0 ? -6 : 6),
       y: clamp(goal.y + missOffset, -5, this.pitch.height + 5)
     };
-    const missVelocity = this.buildBallVelocity(shooter.position, missTarget, 12 + (shotPower / 100) * 10);
+    const missVelocity = this.buildBallVelocity(shooter.position, missTarget, shotSpeed * 0.95);
+    const missSpin = shotSpinMag > 0 ? this.getSpinVector(shooter.position, missTarget, shotSpinMag) : undefined;
     return {
       type: 'shot',
       teamId,
@@ -751,6 +800,8 @@ export class RulesAgent {
       setPieceType: context?.setPiece,
       ballPosition: { ...shooter.position },
       ballVelocity: missVelocity,
+      ballSpin: missSpin,
+      ballPower: shotPower,
       chanceQuality
     };
   }
@@ -1013,7 +1064,7 @@ export class RulesAgent {
   }
 
   private getPressure(state: SimulationState, player: PlayerState) {
-    let closestDistance = Number.POSITIVE_INFINITY;
+    let bestPressure = 0;
     for (const opponent of state.players) {
       if (opponent.teamId === player.teamId || !isAvailable(opponent)) continue;
       const dx = opponent.position.x - player.position.x;
@@ -1022,13 +1073,22 @@ export class RulesAgent {
       if (hasTrait(opponent, 'marks_opponent_tightly')) dist *= 0.85;
       if (hasTrait(opponent, 'dives_into_tackles')) dist *= 0.9;
       if (hasTrait(opponent, 'does_not_dive_into_tackles')) dist *= 1.05;
-      if (dist < closestDistance) {
-        closestDistance = dist;
-      }
+      const aggression = getAttribute(opponent, 'aggression');
+      const workRate = getAttribute(opponent, 'work_rate');
+      const acceleration = getAttribute(opponent, 'acceleration');
+      const positioning = getAttribute(opponent, 'positioning');
+      const fatigue = clamp(opponent.fatigue ?? 0, 0, 1);
+      const pressSkill = clamp((aggression + workRate + acceleration + positioning) / 400, 0, 1);
+      const pressureDistance = clamp(
+        TUNING.pressure.baseDistance * (0.8 + pressSkill * 0.6) * (1 - fatigue * 0.25),
+        TUNING.pressure.minDistance,
+        TUNING.pressure.maxDistance
+      );
+      const pressure = clamp((pressureDistance - dist) / pressureDistance, 0, 1);
+      if (pressure > bestPressure) bestPressure = pressure;
     }
 
-    if (!Number.isFinite(closestDistance)) return 0;
-    return clamp((PRESSURE_DISTANCE - closestDistance) / PRESSURE_DISTANCE, 0, 1);
+    return bestPressure;
   }
 
   private getInterceptionCandidate(
@@ -1369,6 +1429,75 @@ export class RulesAgent {
     return clamp(power, 0.3, 0.85);
   }
 
+  private getPassPower(
+    passer: PlayerState,
+    instructions?: TeamInstructions,
+    passStyle?: RuleDecision['passStyle']
+  ) {
+    const passing = getAttribute(passer, 'passing');
+    const technique = getAttribute(passer, 'technique');
+    const strength = getAttribute(passer, 'strength');
+    const composure = getAttribute(passer, 'composure');
+    let power = 0.55 + (passing + technique) / 200 * 0.35 + (strength / 100) * 0.2;
+    power += (composure - 50) / 500;
+
+    const directness = instructions?.passing_directness;
+    if (directness === 'More Direct') power += 0.06;
+    if (directness === 'Much More Direct') power += 0.1;
+    if (directness === 'Much Shorter') power -= 0.08;
+    if (passStyle === 'long_ball') power += 0.08;
+    if (passStyle === 'switch') power += 0.05;
+    if (passStyle === 'whipped_cross' || passStyle === 'cross') power += 0.04;
+    if (hasTrait(passer, 'tries_long_range_passes')) power += 0.08;
+    if (hasTrait(passer, 'plays_short_simple_passes')) power -= 0.06;
+    if (hasTrait(passer, 'stops_play')) power -= 0.05;
+    return clamp(power, 0.4, 1.1);
+  }
+
+  private getPassSpinMagnitude(passer: PlayerState, passStyle?: RuleDecision['passStyle']) {
+    if (!passStyle) return 0;
+    let spin = 0.08;
+    if (passStyle === 'whipped_cross') spin = 0.5;
+    if (passStyle === 'cross') spin = 0.35;
+    if (passStyle === 'trivela') spin = 0.55;
+    if (passStyle === 'switch') spin = 0.25;
+    if (passStyle === 'through_ball') spin = 0.18;
+    if (passStyle === 'cutback') spin = 0.12;
+    spin *= playstyleMultiplier(passer, 'whipped_pass', 1.08, 1.12);
+    spin *= playstyleMultiplier(passer, 'trivela', 1.1, 1.15);
+    if (hasTrait(passer, 'tries_long_range_passes')) spin *= 1.05;
+    return clamp(spin, 0, TUNING.physics.spinMax);
+  }
+
+  private getShotSpinMagnitude(shooter: PlayerState, shotStyle?: RuleDecision['shotStyle']) {
+    if (!shotStyle) return 0.15;
+    let spin = 0.12;
+    if (shotStyle === 'finesse') spin = 0.55;
+    if (shotStyle === 'trivela') spin = 0.6;
+    if (shotStyle === 'chip') spin = 0.4;
+    if (shotStyle === 'placed') spin = 0.3;
+    if (shotStyle === 'power') spin = 0.12;
+    if (shotStyle === 'long_range') spin = 0.2;
+    spin *= playstyleMultiplier(shooter, 'finesse_shot', 1.08, 1.15);
+    spin *= playstyleMultiplier(shooter, 'trivela', 1.1, 1.16);
+    spin *= playstyleMultiplier(shooter, 'chip_shot', 1.05, 1.1);
+    if (hasTrait(shooter, 'curls_ball')) spin *= 1.1;
+    return clamp(spin, 0, TUNING.physics.spinMax);
+  }
+
+  private getSpinVector(from: Vector2, to: Vector2, magnitude: number) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const perpX = -dy / len;
+    const perpY = dx / len;
+    const directionBias = Math.sign(dy || 1);
+    return {
+      x: perpX * magnitude * directionBias,
+      y: perpY * magnitude * directionBias
+    };
+  }
+
   private resolveGoalkeeperOutcome(
     goalkeeper: PlayerState,
     shooter: PlayerState,
@@ -1421,14 +1550,22 @@ export class RulesAgent {
     opponents.forEach((opponent) => {
       const { distance, t } = this.getDistanceToSegment(shooter.position, goal, opponent.position);
       if (t < 0.05 || t > 0.85) return;
-      if (distance > 4.2) return;
+      const positioning = getAttribute(opponent, 'positioning');
+      const anticipation = getAttribute(opponent, 'anticipation');
+      const fatigue = clamp(opponent.fatigue ?? 0, 0, 1);
+      const maxDistance = clamp(
+        TUNING.block.baseMaxDistance + ((positioning + anticipation) / 200) * 1.2 - fatigue * 0.6,
+        TUNING.block.minDistance,
+        TUNING.block.maxDistance
+      );
+      if (distance > maxDistance) return;
       const blockSkill = average(
-        getAttribute(opponent, 'positioning'),
-        getAttribute(opponent, 'anticipation'),
+        positioning,
+        anticipation,
         getAttribute(opponent, 'tackling'),
         getAttribute(opponent, 'bravery')
       );
-      const closeness = clamp(1 - distance / 4.2, 0, 1);
+      const closeness = clamp(1 - distance / maxDistance, 0, 1);
       let chance = 0.06 + closeness * 0.18 + (blockSkill - 50) / 300;
       chance *= playstyleMultiplier(opponent, 'block', 1.1, 1.16);
       if (hasTrait(opponent, 'dives_into_tackles')) chance *= 1.05;

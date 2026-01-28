@@ -75,6 +75,8 @@ const buildState = (players: SimPlayer[]): SimulationState => ({
   ball: {
     position: { x: DEFAULT_PITCH.width / 2, y: DEFAULT_PITCH.height / 2 },
     velocity: { x: 0, y: 0 },
+    spin: { x: 0, y: 0 },
+    lastKickPower: 0,
     radius: 0.7
   },
   officials: []
@@ -98,6 +100,8 @@ const buildContext = (state: SimulationState) => ({
   getLineDepth: (x: number, direction: number) =>
     (direction === 1 ? x : DEFAULT_PITCH.width - x) / DEFAULT_PITCH.width,
   isInAttackingBox: () => false,
+  getTeamScore: () => 0,
+  getOpponentTeamId: (teamId: string) => (teamId === 'home' ? 'away' : 'home'),
   hasPlaystyle: () => false,
   hasPlaystylePlus: () => false,
   getPlaystyleBonus: () => 0,

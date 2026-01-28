@@ -1,5 +1,6 @@
 import { DEFAULT_PITCH, PlayerState, SimulationState } from '../domain/simulationTypes';
 import { DEFAULT_ENVIRONMENT, EnvironmentState } from '../domain/environmentTypes';
+import { TUNING } from '../data/tuning';
 
 type PhysicsConfig = {
   pitchWidth?: number;
@@ -156,7 +157,19 @@ export class PhysicsAgent {
 
   private updateBall(state: SimulationState, dt: number) {
     const env = this.getEnvironmentModifiers();
-    const friction = env.friction;
+    let friction = env.friction;
+    const power = clamp(state.ball.lastKickPower ?? 0, 0, 1.2);
+    friction = clamp(friction + power * TUNING.physics.powerToFriction, 0.92, 0.995);
+
+    const spin = state.ball.spin ?? { x: 0, y: 0 };
+    const speed = length(state.ball.velocity.x, state.ball.velocity.y);
+    const spinMag = length(spin.x, spin.y);
+    if (spinMag > 0.001 && speed > 0.05) {
+      const perp = normalize(-state.ball.velocity.y, state.ball.velocity.x);
+      const spinForce = spinMag * TUNING.physics.spinAccel;
+      state.ball.velocity.x += perp.x * spinForce * dt * 60;
+      state.ball.velocity.y += perp.y * spinForce * dt * 60;
+    }
 
     state.ball.velocity.x += env.wind.x * dt;
     state.ball.velocity.y += env.wind.y * dt;
@@ -175,6 +188,10 @@ export class PhysicsAgent {
 
     state.ball.velocity.x *= friction;
     state.ball.velocity.y *= friction;
+    const spinDecay = Math.pow(TUNING.physics.spinDecay, dt * 60);
+    state.ball.spin.x *= spinDecay;
+    state.ball.spin.y *= spinDecay;
+    state.ball.lastKickPower *= spinDecay;
 
     if (Math.abs(state.ball.velocity.x) < 0.02) state.ball.velocity.x = 0;
     if (Math.abs(state.ball.velocity.y) < 0.02) state.ball.velocity.y = 0;

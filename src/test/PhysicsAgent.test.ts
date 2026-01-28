@@ -36,6 +36,8 @@ const buildState = (): SimulationState => ({
   ball: {
     position: { x: DEFAULT_PITCH.width / 2, y: DEFAULT_PITCH.height / 2 },
     velocity: { x: 0, y: 0 },
+    spin: { x: 0, y: 0 },
+    lastKickPower: 0,
     radius: 0.7
   },
   officials: [{ id: 'ref-1', role: 'referee', position: { x: 50, y: 34 } }]
