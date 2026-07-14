@@ -1,6 +1,7 @@
 import { EnvironmentState, DEFAULT_ENVIRONMENT } from '../domain/environmentTypes';
 import { TUNING } from '../data/tuning';
 import { PitchDimensions, PlayerState, SimulationState, Vector2 } from '../domain/simulationTypes';
+import { createSeededRandom, RandomSource } from './engine/seededRandom';
 
 type TeamInstructions = Record<string, string>;
 
@@ -65,7 +66,7 @@ export type RuleDecision = {
   chanceQuality?: 'big' | 'normal';
   turnoverPlayerId?: string;
   turnoverTeamId?: string;
-  turnoverReason?: 'interception' | 'miscontrol' | 'tackle';
+  turnoverReason?: 'interception' | 'miscontrol' | 'tackle' | 'aerial_duel';
   ballSpin?: Vector2;
   ballPower?: number;
 };
@@ -75,6 +76,7 @@ type RuleConfig = {
   homeTeamId: string;
   matchImportance?: number;
   environment?: EnvironmentState;
+  random?: RandomSource;
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -115,6 +117,7 @@ export class RulesAgent {
   private homeTeamId: string;
   private matchImportance: number;
   private environment: EnvironmentState;
+  private random: RandomSource;
   private sidesSwitched = false;
 
   constructor(config: RuleConfig) {
@@ -122,6 +125,7 @@ export class RulesAgent {
     this.homeTeamId = config.homeTeamId;
     this.matchImportance = config.matchImportance ?? 1;
     this.environment = config.environment ?? DEFAULT_ENVIRONMENT;
+    this.random = config.random ?? createSeededRandom(Date.now());
   }
 
   switchSides() {
@@ -206,7 +210,7 @@ export class RulesAgent {
     shotWeight *= playstyleMultiplier(player, 'gamechanger', 1.05, 1.1);
 
     const totalWeight = passWeight + shotWeight;
-    const roll = Math.random() * totalWeight;
+    const roll = this.random() * totalWeight;
 
     if (roll <= passWeight) {
       const receiver = this.pickForwardTeammate(state, teamId, player.id);
@@ -336,6 +340,11 @@ export class RulesAgent {
     const receiverPressure = receiver ? this.getPressure(state, receiver) : 0;
     const receivePenalty = clamp(receiverPressure * 0.2, 0, 0.2);
     passChance *= 1 - receivePenalty;
+    passChance = clamp(
+      passChance,
+      TUNING.match.passChanceFloor,
+      TUNING.match.passChanceCeiling
+    );
 
     const passRisk = clamp(1 - passChance, 0, 1);
     const target = receiver?.position ?? passer.position;
@@ -343,8 +352,8 @@ export class RulesAgent {
       ? this.getInterceptionCandidate(state, passer, receiver, passChance)
       : null;
     const intercepted =
-      interceptCandidate ? Math.random() < interceptCandidate.chance : false;
-    const success = Math.random() < passChance;
+      interceptCandidate ? this.random() < interceptCandidate.chance : false;
+    const success = this.random() < passChance;
     const leadTarget = context?.passLeadPosition ? this.clampPosition(context.passLeadPosition) : null;
     const passTarget =
       success && receiver
@@ -409,13 +418,13 @@ export class RulesAgent {
           passRisk,
           turnoverPlayerId: aerialContest.winner.id,
           turnoverTeamId: aerialContest.winner.teamId,
-          turnoverReason: 'interception'
+          turnoverReason: 'aerial_duel'
         };
       }
 
       if (!aerialContest) {
         const miscontrolChance = this.getMiscontrolChance(receiver, receiverPressure);
-        if (Math.random() < miscontrolChance) {
+        if (this.random() < miscontrolChance) {
           const opponent = this.findNearestOpponent(state, receiver.position, receiver.teamId);
           if (opponent) {
             return {
@@ -465,8 +474,8 @@ export class RulesAgent {
     const distance = Math.hypot(dx, dy) || 1;
     const baseDirX = dx / distance;
     const baseDirY = dy / distance;
-    const overhit = 4 + passRisk * 12 + Math.random() * 4;
-    const lateralError = (Math.random() * 2 - 1) * (2 + passRisk * 6);
+    const overhit = 4 + passRisk * 12 + this.random() * 4;
+    const lateralError = (this.random() * 2 - 1) * (2 + passRisk * 6);
     const missTarget = {
       x: passer.position.x + (distance + overhit) * baseDirX,
       y: passer.position.y + (distance + overhit) * baseDirY + lateralError
@@ -594,7 +603,7 @@ export class RulesAgent {
       goalChance = clamp(goalChance + (penalty / 100) * 0.15, 0.2, 0.95);
     }
 
-    const roll = Math.random();
+    const roll = this.random();
     const shotTarget = this.applyTargetScatter(
       goal,
       this.getShotScatter(shooter, distanceFactor, context),
@@ -615,7 +624,7 @@ export class RulesAgent {
     const ballSpin = shotSpinMag > 0 ? this.getSpinVector(state.ball.position, shotTarget, shotSpinMag) : undefined;
 
     const block = this.getBlockCandidate(state, shooter, teamId);
-    if (block && Math.random() < block.chance) {
+    if (block && this.random() < block.chance) {
       const deflectionVelocity = this.buildLooseBallVelocity(block.player.position, 6);
       return {
         type: 'shot',
@@ -686,7 +695,7 @@ export class RulesAgent {
           };
         }
         if (gkOutcome.type === 'parry') {
-          if (Math.random() < 0.45) {
+          if (this.random() < TUNING.match.parryToCornerChance) {
             const restartPosition = this.getRestartPosition(state, 'corner', teamId, shooter.position);
             const restartTeamId = this.getRestartTeamId(state, 'corner', teamId);
             return {
@@ -711,7 +720,7 @@ export class RulesAgent {
               chanceQuality
             };
           }
-          if (Math.random() < 0.4) {
+          if (this.random() < 0.4) {
             const deflection = this.buildLooseBallVelocity(goalkeeper.position, 5.5);
             return {
               type: 'shot',
@@ -758,8 +767,13 @@ export class RulesAgent {
         }
       }
 
-      const restartPosition = this.getRestartPosition(state, 'corner', teamId, shooter.position);
-      const restartTeamId = this.getRestartTeamId(state, 'corner', teamId);
+      const fallbackCorner = this.random() < TUNING.match.fallbackSaveToCornerChance;
+      const restartPosition = fallbackCorner
+        ? this.getRestartPosition(state, 'corner', teamId, shooter.position)
+        : undefined;
+      const restartTeamId = fallbackCorner
+        ? this.getRestartTeamId(state, 'corner', teamId)
+        : undefined;
       return {
         type: 'shot',
         teamId,
@@ -774,14 +788,14 @@ export class RulesAgent {
         ballVelocity,
         ballSpin,
         ballPower: shotPower,
-        restartType: 'corner',
+        restartType: fallbackCorner ? 'corner' : undefined,
         restartPosition,
         restartTeamId,
         chanceQuality
       };
     }
 
-    const missOffset = (Math.random() * 2 - 1) * (6 + distance * 0.08);
+    const missOffset = (this.random() * 2 - 1) * (6 + distance * 0.08);
     const missTarget = {
       x: goal.x + (goal.x === 0 ? -6 : 6),
       y: clamp(goal.y + missOffset, -5, this.pitch.height + 5)
@@ -862,7 +876,7 @@ export class RulesAgent {
   ): RuleDecision['shotStyle'] {
     if (context?.setPiece === 'penalty') return 'placed';
     const overhead =
-      hasTrait(shooter, 'attempts_overhead_kicks') && distance <= 10 && Math.random() < 0.35;
+      hasTrait(shooter, 'attempts_overhead_kicks') && distance <= 10 && this.random() < 0.35;
     if (overhead) return 'overhead';
 
     const headerCandidate =
@@ -872,7 +886,7 @@ export class RulesAgent {
         hasPlaystyle(shooter, 'aerial') ||
         hasPlaystyle(shooter, 'aerial_fortress') ||
         hasTrait(shooter, 'penalty_box_player'));
-    if (headerCandidate && Math.random() < 0.55) return 'header';
+    if (headerCandidate && this.random() < 0.55) return 'header';
 
     if ((hasPlaystyle(shooter, 'chip_shot') || hasTrait(shooter, 'likes_to_lob_keeper')) && distance <= 18) {
       return 'chip';
@@ -901,14 +915,18 @@ export class RulesAgent {
     const tackling = getAttribute(defender, 'tackling');
     const dirtiness = getAttribute(defender, 'dirtiness');
 
-    let foulChance = 0.02 + (aggression / 100) * 0.06 + (dirtiness / 100) * 0.06;
+    let foulChance =
+      TUNING.discipline.foulBaseChance +
+      (aggression / 100) * 0.06 +
+      (dirtiness / 100) * 0.06;
     foulChance -= (tackling / 100) * 0.02;
     foulChance *= playstyleMultiplier(defender, 'bruiser', 1.08, 1.15);
     foulChance *= playstyleMultiplier(defender, 'enforcer', 1.06, 1.12);
     foulChance *= playstyleMultiplier(defender, 'anticipate', 0.96, 0.9);
     foulChance *= 0.95 + this.matchImportance * 0.1;
+    foulChance *= TUNING.discipline.foulChanceMultiplier;
 
-    if (Math.random() >= foulChance) {
+    if (this.random() >= foulChance) {
       return null;
     }
 
@@ -980,8 +998,10 @@ export class RulesAgent {
     severity: number,
     inBox: boolean
   ) {
-    let redChance = 0.02 + severity * 0.12;
-    let yellowChance = 0.14 + severity * 0.55;
+    let redChance =
+      TUNING.discipline.redBaseChance + severity * TUNING.discipline.redSeverityScale;
+    let yellowChance =
+      TUNING.discipline.yellowBaseChance + severity * TUNING.discipline.yellowSeverityScale;
 
     if (inBox) redChance += 0.05;
     if (this.isLastMan(state, offender, position, attackingTeamId)) redChance += 0.12;
@@ -991,10 +1011,10 @@ export class RulesAgent {
     }
 
     redChance = clamp(redChance, 0, 0.45);
-    yellowChance = clamp(yellowChance, 0.1, 0.85);
+    yellowChance = clamp(yellowChance, 0.02, 0.55);
 
-    if (Math.random() < redChance) return 'red';
-    if (Math.random() < yellowChance) return 'yellow';
+    if (this.random() < redChance) return 'red';
+    if (this.random() < yellowChance) return 'yellow';
     return undefined;
   }
 
@@ -1025,7 +1045,7 @@ export class RulesAgent {
     chance -= Math.min(nearbyOpponents, 3) * 0.04;
     chance -= severity * 0.25;
 
-    return Math.random() < clamp(chance, 0.05, 0.45);
+    return this.random() < clamp(chance, 0.05, 0.45);
   }
 
   private isLastMan(
@@ -1105,10 +1125,10 @@ export class RulesAgent {
     const baseIntercept = clamp(0.05 + (1 - passChance) * 0.35, 0.05, 0.45);
     let best: { player: PlayerState; chance: number } | null = null;
 
-    opponents.forEach((opponent) => {
+    for (const opponent of opponents) {
       const { distance, t } = this.getDistanceToSegment(passer.position, receiver.position, opponent.position);
-      if (t < 0.12 || t > 0.95) return;
-      if (distance > 6) return;
+      if (t < 0.12 || t > 0.95) continue;
+      if (distance > 6) continue;
 
       const positioning = getAttribute(opponent, 'positioning');
       const anticipation = getAttribute(opponent, 'anticipation');
@@ -1127,11 +1147,20 @@ export class RulesAgent {
       if (hasTrait(opponent, 'does_not_dive_into_tackles')) multiplier *= 0.95;
 
       const experience = this.getExperienceFactor(opponent);
-      const chance = clamp(baseIntercept * closeness * (0.6 + timing * 0.4) * multiplier * experience, 0, 0.6);
+      const chance = clamp(
+        baseIntercept *
+          closeness *
+          (0.6 + timing * 0.4) *
+          multiplier *
+          experience *
+          TUNING.match.interceptionChanceMultiplier,
+        0,
+        0.6
+      );
       if (!best || chance > best.chance) {
         best = { player: opponent, chance };
       }
-    });
+    }
 
     return best;
   }
@@ -1161,7 +1190,7 @@ export class RulesAgent {
     }));
 
     const total = scored.reduce((sum, entry) => sum + entry.score, 0) || 1;
-    let roll = Math.random() * total;
+    let roll = this.random() * total;
     for (const entry of scored) {
       roll -= entry.score;
       if (roll <= 0) {
@@ -1407,8 +1436,8 @@ export class RulesAgent {
 
   private applyTargetScatter(target: Vector2, scatter: number, scale = 10) {
     if (scatter <= 0) return { ...target };
-    const angle = Math.random() * Math.PI * 2;
-    const radius = (0.35 + Math.random() * 0.65) * scatter * scale;
+    const angle = this.random() * Math.PI * 2;
+    const radius = (0.35 + this.random() * 0.65) * scatter * scale;
     return {
       x: clamp(target.x + Math.cos(angle) * radius, 0.5, this.pitch.width - 0.5),
       y: clamp(target.y + Math.sin(angle) * radius, 0.5, this.pitch.height - 0.5)
@@ -1530,14 +1559,14 @@ export class RulesAgent {
     saveChance *= playstyleMultiplier(shooter, 'power_shot', 0.94, 0.9);
 
     saveChance = clamp(saveChance, 0.18, 0.9);
-    if (Math.random() > saveChance) {
+    if (this.random() > saveChance) {
       return { type: 'parry' as const };
     }
 
     let catchChance = (handling / 100) * 0.6 + (1 - shotPower) * 0.35;
     catchChance *= 1 - (goalkeeper.fatigue ?? 0) * 0.15;
     catchChance = clamp(catchChance, 0.25, 0.85);
-    return Math.random() < catchChance ? { type: 'catch' as const } : { type: 'parry' as const };
+    return this.random() < catchChance ? { type: 'catch' as const } : { type: 'parry' as const };
   }
 
   private getBlockCandidate(state: SimulationState, shooter: PlayerState, teamId: string) {
@@ -1547,9 +1576,9 @@ export class RulesAgent {
     const goal = this.getGoalPosition(teamId);
     let best: { player: PlayerState; chance: number } | null = null;
 
-    opponents.forEach((opponent) => {
+    for (const opponent of opponents) {
       const { distance, t } = this.getDistanceToSegment(shooter.position, goal, opponent.position);
-      if (t < 0.05 || t > 0.85) return;
+      if (t < 0.05 || t > 0.85) continue;
       const positioning = getAttribute(opponent, 'positioning');
       const anticipation = getAttribute(opponent, 'anticipation');
       const fatigue = clamp(opponent.fatigue ?? 0, 0, 1);
@@ -1558,7 +1587,7 @@ export class RulesAgent {
         TUNING.block.minDistance,
         TUNING.block.maxDistance
       );
-      if (distance > maxDistance) return;
+      if (distance > maxDistance) continue;
       const blockSkill = average(
         positioning,
         anticipation,
@@ -1573,14 +1602,14 @@ export class RulesAgent {
       if (!best || chance > best.chance) {
         best = { player: opponent, chance };
       }
-    });
+    }
 
     return best;
   }
 
-  private buildLooseBallVelocity(origin: Vector2, baseSpeed: number) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = baseSpeed * (0.6 + Math.random() * 0.6);
+  private buildLooseBallVelocity(_origin: Vector2, baseSpeed: number) {
+    const angle = this.random() * Math.PI * 2;
+    const speed = baseSpeed * (0.6 + this.random() * 0.6);
     return {
       x: Math.cos(angle) * speed,
       y: Math.sin(angle) * speed
@@ -1665,19 +1694,6 @@ export class RulesAgent {
     const offsideLine = Math.max(ballAxis, secondLastDefender);
 
     return receiverAxis > offsideLine;
-  }
-
-  private getOutOfPlayRestart(attackingTeamId: string, position: Vector2) {
-    const nearSideline = position.y <= 8 || position.y >= this.pitch.height - 8;
-    if (nearSideline) return 'throw_in';
-
-    const goalLine = this.getGoalPosition(attackingTeamId);
-    const distanceToGoalLine = Math.abs(position.x - goalLine.x);
-    if (distanceToGoalLine < 10) {
-      return Math.random() < 0.7 ? 'goal_kick' : 'corner';
-    }
-
-    return 'throw_in';
   }
 
   private getRestartPosition(

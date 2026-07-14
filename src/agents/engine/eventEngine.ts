@@ -7,6 +7,7 @@ import { RoleBehavior } from '../../data/roleBehavior';
 import { TeamSetupState } from '../../domain/teamSetupTypes';
 import { clamp } from './engineMath';
 import { AdaptationState, AdaptationWindow, PossessionState, RestartState, SimPlayer } from './engineTypes';
+import { RandomSource } from './seededRandom';
 
 export const ADAPTATION_INITIAL_DELAY = 300;
 export const ADAPTATION_WINDOW_SECONDS = 240;
@@ -14,6 +15,7 @@ export const ADAPTATION_MIN_EVENTS = 12;
 export const ADAPTATION_LANE_MARGIN = 0.15;
 
 export type EventContext = {
+  random: RandomSource;
   state: SimulationState;
   pitch: PitchDimensions;
   environment: EnvironmentState;
@@ -422,13 +424,13 @@ export const updateInjuries = (context: EventContext, dt: number) => {
       importance *
       bodyRisk;
 
-    if (Math.random() < risk * dt) {
+    if (context.random() < risk * dt) {
       const severity = clamp(
-        0.18 + Math.random() * 0.45 + injuryProneness / 200 + fatigue * 0.25 - (bravery / 100) * 0.05,
+        0.18 + context.random() * 0.45 + injuryProneness / 200 + fatigue * 0.25 - (bravery / 100) * 0.05,
         0.18,
         0.85
       );
-      const duration = 20 + severity * 80 + Math.random() * 20;
+      const duration = 20 + severity * 80 + context.random() * 20;
       player.injury = { severity, remaining: duration };
       adjustPlayerMorale(context, player.id, -6 * importance);
       adjustTeamMorale(context, player.teamId, -2.5 * importance);
@@ -458,7 +460,7 @@ export const adjustPlayerMorale = (context: EventContext, playerId: string, delt
   player.morale = clamp((player.morale ?? 60) + adjusted, 20, 95);
 };
 
-export const getMoraleFactor = (context: EventContext, player: SimPlayer) => {
+export const getMoraleFactor = (_context: EventContext, player: SimPlayer) => {
   const morale = player.morale ?? 60;
   return clamp(0.9 + (morale / 100) * 0.2, 0.85, 1.15);
 };

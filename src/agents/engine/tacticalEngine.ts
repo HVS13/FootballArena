@@ -25,6 +25,11 @@ type TeamProfile = {
   workRate: number;
 };
 
+const normalize = (x: number, y: number) => {
+  const length = Math.hypot(x, y) || 1;
+  return { x: x / length, y: y / length };
+};
+
 export const updateTacticalTargets = (context: TacticalContext) => {
   if (context.restartState) {
     context.state.players.forEach((player) => {
@@ -40,16 +45,100 @@ export const updateTacticalTargets = (context: TacticalContext) => {
     possessorId ? context.state.players.find((player) => player.id === possessorId) ?? null : null;
   const ball = context.state.ball.position;
   const pressTarget = possessor?.position ?? ball;
+  const ballSpeed = Math.hypot(context.state.ball.velocity.x, context.state.ball.velocity.y);
   const midY = context.pitch.height / 2;
   const teamShape = new Map<string, { defensiveLineAxis: number; engagementAxis: number; pressTrigger: number }>();
   const teamMarking = new Map<string, Map<string, SimPlayer>>();
   const pressingAssignments = new Map<string, { target: Vector2; intensity: number }>();
   const looseBallAssignments = possessionTeamId ? null : buildLooseBallAssignments(context, ball);
+  const looseBall = !possessionTeamId;
+  const ballChasers = new Map<string, SimPlayer>();
+  const ballSupporters = new Map<string, { player: SimPlayer; position: Vector2 }>();
   const teamProfiles = new Map<string, TeamProfile>();
 
   context.state.teams.forEach((team) => {
     teamProfiles.set(team.id, buildTeamProfile(context, team.id));
   });
+
+  const isBallInDefensiveBox = (teamId: string) => {
+    const goalX = teamId === context.state.teams[0]?.id ? 0 : context.pitch.width;
+    const boxDepth = 18;
+    const boxHalfWidth = 20;
+    const withinX =
+      goalX === 0 ? ball.x <= boxDepth : ball.x >= context.pitch.width - boxDepth;
+    const withinY = Math.abs(ball.y - midY) <= boxHalfWidth;
+    return withinX && withinY;
+  };
+
+  const pickBallChaser = (teamId: string) => {
+    const candidates = context.state.players.filter(
+      (player) => player.teamId === teamId && !player.discipline?.red
+    );
+    if (!candidates.length) return null;
+    const ballInBox = isBallInDefensiveBox(teamId);
+    let best: SimPlayer | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (const player of candidates) {
+      if (isGoalkeeperRole(player) && !ballInBox) continue;
+      const anticipation = context.getAttribute(player, 'anticipation');
+      const acceleration = context.getAttribute(player, 'acceleration');
+      const aggression = context.getAttribute(player, 'aggression');
+      const decisions = context.getAttribute(player, 'decisions');
+      const positioning = context.getAttribute(player, 'positioning');
+      const bravery = context.getAttribute(player, 'bravery');
+      const distance = Math.hypot(ball.x - player.position.x, ball.y - player.position.y);
+      const score =
+        distance -
+        (anticipation + acceleration) * 0.04 -
+        aggression * 0.02 -
+        (decisions + positioning) * 0.015 -
+        bravery * 0.01;
+      if (score < bestScore) {
+        bestScore = score;
+        best = player;
+      }
+    }
+    return best;
+  };
+
+  if (looseBall) {
+    context.state.teams.forEach((team) => {
+      const chaser = pickBallChaser(team.id);
+      if (!chaser) return;
+      ballChasers.set(team.id, chaser);
+
+      const supportCandidates = context.state.players.filter(
+        (player) =>
+          player.teamId === team.id &&
+          player.id !== chaser.id &&
+          !player.discipline?.red &&
+          !isGoalkeeperRole(player)
+      );
+      if (!supportCandidates.length) return;
+      const support = supportCandidates.reduce((best, player) => {
+        const distance = Math.hypot(ball.x - player.position.x, ball.y - player.position.y);
+        if (!best || distance < best.distance) return { player, distance };
+        return best;
+      }, null as null | { player: SimPlayer; distance: number })?.player;
+      if (!support) return;
+      const toSupport = normalize(support.position.x - ball.x, support.position.y - ball.y);
+      const teamwork = context.getAttribute(support, 'teamwork');
+      const vision = context.getAttribute(support, 'vision');
+      const composure = context.getAttribute(support, 'composure');
+      const supportDistance = clamp(
+        3 + (teamwork / 100) * 2 + (vision / 100) * 1.2 + (composure / 100) * 0.6 + (ballSpeed > 2 ? 1 : 0),
+        3,
+        7
+      );
+      ballSupporters.set(team.id, {
+        player: support,
+        position: {
+          x: clamp(ball.x + toSupport.x * supportDistance, 1, context.pitch.width - 1),
+          y: clamp(ball.y + toSupport.y * supportDistance, 1, context.pitch.height - 1)
+        }
+      });
+    });
+  }
 
   context.state.teams.forEach((team) => {
     const instructions = context.getTeamInstructions(team.id);
@@ -81,6 +170,13 @@ export const updateTacticalTargets = (context: TacticalContext) => {
     const lineDepth = getLineDepth(context, base.x, direction);
     const inPossession = possessionTeamId === player.teamId;
     const shape = teamShape.get(player.teamId);
+    const decisions = context.getAttribute(player, 'decisions');
+    const positioning = context.getAttribute(player, 'positioning');
+    const teamwork = context.getAttribute(player, 'teamwork');
+    const workRate = context.getAttribute(player, 'work_rate');
+    const aggression = context.getAttribute(player, 'aggression');
+    const bravery = context.getAttribute(player, 'bravery');
+    const anticipation = context.getAttribute(player, 'anticipation');
 
     if (player.discipline?.red) {
       player.tacticalPosition = { ...player.position };
@@ -88,6 +184,34 @@ export const updateTacticalTargets = (context: TacticalContext) => {
       player.targetPosition = { ...player.position };
       player.targetTimer = Math.min(player.targetTimer, 0.5);
       return;
+    }
+
+    if (looseBall) {
+      const chaser = ballChasers.get(player.teamId);
+      if (chaser && player.id === chaser.id) {
+        const target = {
+          x: clamp(ball.x, player.radius, context.pitch.width - player.radius),
+          y: clamp(ball.y, player.radius, context.pitch.height - player.radius)
+        };
+        player.tacticalPosition = { ...target };
+        player.tacticalWander = 0.35;
+        player.targetPosition = { ...target };
+        player.targetTimer = Math.min(player.targetTimer, 0.25);
+        return;
+      }
+
+      const support = ballSupporters.get(player.teamId);
+      if (support && player.id === support.player.id) {
+        const target = {
+          x: clamp(support.position.x, player.radius, context.pitch.width - player.radius),
+          y: clamp(support.position.y, player.radius, context.pitch.height - player.radius)
+        };
+        player.tacticalPosition = { ...target };
+        player.tacticalWander = 0.45;
+        player.targetPosition = { ...target };
+        player.targetTimer = Math.min(player.targetTimer, 0.35);
+        return;
+      }
     }
 
     if (isGoalkeeperRole(player)) {
@@ -167,21 +291,19 @@ export const updateTacticalTargets = (context: TacticalContext) => {
       anchorY = lerp(anchorY, ball.y, 0.12 * roamPull);
 
       const offTheBall = context.getAttribute(player, 'off_the_ball');
-      const teamwork = context.getAttribute(player, 'teamwork');
       const supportFactor = clamp((offTheBall + teamwork) / 200, 0, 1);
       const playerAxis = getAttackAxis(context, anchorX, direction);
       const ballAxis = getAttackAxis(context, ball.x, direction);
       const axisDelta = clamp(ballAxis - playerAxis, -14, 14);
       let supportShift = axisDelta * (0.04 + supportFactor * 0.06);
+      supportShift *= 0.9 + (decisions + teamwork) / 2000;
       if (context.hasTrait(player, 'comes_deep_to_get_ball') && axisDelta < 0) {
         supportShift *= 1.2;
       }
       anchorX += direction * supportShift;
 
       if (player.id !== possessorId) {
-        const anticipation = context.getAttribute(player, 'anticipation');
         const acceleration = context.getAttribute(player, 'acceleration');
-        const decisions = context.getAttribute(player, 'decisions');
         const runSkill = clamp((offTheBall + anticipation + acceleration + decisions) / 400, 0, 1);
         let runBias = runSkill * 0.5 + behavior.advance * 0.45 + behavior.roam * 0.15;
         runBias += roleProfile.inPossession.runBias;
@@ -228,6 +350,17 @@ export const updateTacticalTargets = (context: TacticalContext) => {
         anchorY += lateralShift;
       }
 
+      if (player.id === possessorId) {
+        const dribbling = context.getAttribute(player, 'dribbling');
+        const acceleration = context.getAttribute(player, 'acceleration');
+        const balance = context.getAttribute(player, 'balance');
+        const carryIntent = clamp(behavior.carry + roleProfile.decision.carryBias + dribbling / 140, 0, 1);
+        const carrySkill = clamp((dribbling + acceleration + balance + decisions) / 400, 0, 1);
+        const carryStep = 1.6 + carryIntent * (3.4 + carrySkill * 2.6);
+        anchorX += direction * carryStep;
+        anchorY = lerp(anchorY, midY, 0.08);
+      }
+
       const channelBias = roleProfile.inPossession.channelBias;
       if (channelBias > 0.01) {
         const channelTarget = getChannelLaneY(base.y, midY);
@@ -257,11 +390,13 @@ export const updateTacticalTargets = (context: TacticalContext) => {
       const protectingLate = scoreDiff > 0 ? clamp((minute - 70) / 20, 0, 1) : 0;
       const urgency = clamp(chasingLate * 0.3 - protectingLate * 0.22, -0.3, 0.35);
       const pressTrigger = shape?.pressTrigger ?? 1;
-      const pressPull = clamp(
+      let pressPull = clamp(
         (behavior.press + pressBias + roleProfile.outOfPossession.pressBias + urgency) * pressTrigger,
         0,
         1.1
       );
+      const pressIntent = clamp((workRate + aggression + bravery) / 300, 0, 1);
+      pressPull = clamp(pressPull * (0.85 + pressIntent * 0.35), 0, 1.2);
       anchorX = lerp(anchorX, ball.x, 0.07 + pressPull * 0.15);
       anchorY = lerp(anchorY, ball.y, 0.06 + pressPull * 0.15);
 
@@ -322,6 +457,14 @@ export const updateTacticalTargets = (context: TacticalContext) => {
       }
     }
 
+    if (looseBall) {
+      const ballDistance = Math.hypot(ball.x - anchorX, ball.y - anchorY);
+      let ballPull = clamp(1 - ballDistance / 40, 0, 0.25);
+      ballPull *= 0.75 + (workRate + anticipation) / 2000;
+      anchorX = lerp(anchorX, ball.x, ballPull * 0.35);
+      anchorY = lerp(anchorY, ball.y, ballPull * 0.35);
+    }
+
     anchorX = clamp(anchorX, player.radius, context.pitch.width - player.radius);
     anchorY = clamp(anchorY, player.radius, context.pitch.height - player.radius);
 
@@ -338,7 +481,14 @@ export const updateTacticalTargets = (context: TacticalContext) => {
     }
     const versatility = context.getAttribute(player, 'versatility');
     const versatilityFactor = 0.85 + (versatility / 100) * 0.3;
-    player.tacticalWander = clamp(wander * versatilityFactor, 0.6, 1.6);
+    const disciplineFactor = clamp((decisions + positioning + teamwork) / 300, 0, 1);
+    player.tacticalWander = clamp(wander * versatilityFactor * (1 - disciplineFactor * 0.25), 0.5, 1.6);
+
+    if (player.id === possessorId) {
+      player.tacticalWander = Math.min(player.tacticalWander, 0.6);
+      player.targetPosition = { x: anchorX, y: anchorY };
+      player.targetTimer = Math.min(player.targetTimer, 0.25);
+    }
 
     const targetDistance = Math.hypot(player.targetPosition.x - anchorX, player.targetPosition.y - anchorY);
     if (targetDistance > 7) {
@@ -604,13 +754,13 @@ export const buildMarkingAssignments = (context: TacticalContext, teamId: string
     const defenderBand = getLineBand(getLineDepth(context, defender.homePosition.x, direction));
 
     let best: { opponent: SimPlayer; score: number } | null = null;
-    opponents.forEach((opponent) => {
-      if (taken.has(opponent.id)) return;
+    for (const opponent of opponents) {
+      if (taken.has(opponent.id)) continue;
       const distance = Math.hypot(
         opponent.position.x - defender.position.x,
         opponent.position.y - defender.position.y
       );
-      if (distance > markRadius) return;
+      if (distance > markRadius) continue;
       const opponentAxis = getAttackAxis(context, opponent.position.x, direction);
       const axisDelta = opponentAxis - defenderAxis;
       let score = distance;
@@ -621,7 +771,7 @@ export const buildMarkingAssignments = (context: TacticalContext, teamId: string
       if (!best || score < best.score) {
         best = { opponent, score };
       }
-    });
+    }
 
     if (best) {
       assignments.set(defender.id, best.opponent);

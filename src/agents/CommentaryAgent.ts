@@ -1,8 +1,8 @@
 import { CommentaryLine } from '../domain/matchTypes';
 import type { RuleDecision } from './RulesAgent';
+import { createSeededRandom, RandomSource } from './engine/seededRandom';
 
 const MAX_LINES = 50;
-const pick = <T,>(options: T[]) => options[Math.floor(Math.random() * options.length)];
 
 type CommentaryContext = {
   timeSeconds: number;
@@ -612,6 +612,11 @@ const MINUTE_NEUTRAL_LINES = [
 
 export class CommentaryAgent {
   private lines: CommentaryLine[] = [];
+  private sequence = 0;
+
+  constructor(private random: RandomSource = createSeededRandom(Date.now())) {}
+
+  private pick = <T,>(options: T[]) => options[Math.floor(this.random() * options.length)];
 
   addDecision(decision: RuleDecision, context: CommentaryContext) {
     const text = this.buildDecisionLine(decision, context);
@@ -624,8 +629,9 @@ export class CommentaryAgent {
   }
 
   addLine(timeSeconds: number, text: string) {
+    this.sequence += 1;
     this.lines.unshift({
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      id: `commentary-${this.sequence}`,
       timeSeconds,
       text
     });
@@ -640,6 +646,7 @@ export class CommentaryAgent {
   }
 
   private buildDecisionLine(decision: RuleDecision, context: CommentaryContext) {
+    const pick = this.pick;
     const minute = Math.floor(context.timeSeconds / 60);
     const scoreDiff = context.scoreFor - context.scoreAgainst;
     const isTight = Math.abs(scoreDiff) <= 1;
@@ -651,7 +658,7 @@ export class CommentaryAgent {
       }
       const styleKey = decision.shotStyle ?? 'standard';
       const hasStylePool = Boolean(SHOT_STYLE_LINES[styleKey]);
-      const shouldUseStyle = hasStylePool && styleKey !== 'standard' && Math.random() < 0.7;
+      const shouldUseStyle = hasStylePool && styleKey !== 'standard' && this.random() < 0.7;
       if (shouldUseStyle) {
         const pool = SHOT_STYLE_LINES[styleKey].goal;
         return this.fill(pick(pool), decision, context);
@@ -714,6 +721,7 @@ export class CommentaryAgent {
   }
 
   private buildShotLine(decision: RuleDecision, context: CommentaryContext) {
+    const pick = this.pick;
     const outcome = decision.shotOutcome;
     if (decision.setPieceType === 'penalty' && outcome === 'off_target') {
       return this.fill(pick(PENALTY_LINES.missed), decision, context);
@@ -743,6 +751,7 @@ export class CommentaryAgent {
   }
 
   private buildPassLine(decision: RuleDecision, context: CommentaryContext) {
+    const pick = this.pick;
     if (decision.setPieceType && decision.setPieceType !== 'penalty') {
       const pool = SET_PIECE_PASS_LINES[decision.setPieceType];
       if (pool) {
@@ -815,6 +824,7 @@ export class CommentaryAgent {
   }
 
   private buildMinuteScoreLine(context: MinuteSummaryContext) {
+    const pick = this.pick;
     const homeScore = context.home.score;
     const awayScore = context.away.score;
     const score = `${homeScore}-${awayScore}`;
@@ -837,6 +847,7 @@ export class CommentaryAgent {
   }
 
   private buildMinuteDetails(context: MinuteSummaryContext) {
+    const pick = this.pick;
     const details: string[] = [];
     const home = context.home;
     const away = context.away;

@@ -4,13 +4,14 @@ import { DataImportAgent } from '../agents/DataImportAgent';
 import FormationPitch from '../components/FormationPitch';
 import { ENVIRONMENT_PRESETS } from '../data/environmentPresets';
 import { MATCH_IMPORTANCE_LEVELS } from '../data/matchImportance';
-import { referenceData } from '../data/referenceData';
+import { attributeIds, referenceData } from '../data/referenceData';
 import { FORMATIONS, buildLineupSlots } from '../data/formations';
 import { DEFAULT_SET_PIECE_SETTINGS, SET_PIECE_WIZARD_QUESTIONS } from '../data/setPieceWizard';
 import { TACTICAL_PRESETS } from '../data/tacticalPresets';
 import { DEFAULT_ENVIRONMENT, EnvironmentState } from '../domain/environmentTypes';
 import { ImportError, TeamImport } from '../domain/types';
 import { TeamSetup, TeamSetupState } from '../domain/teamSetupTypes';
+import { validateTeamSetup } from '../domain/teamSetupValidation';
 import { useAppState } from '../state/appState';
 
 const TEAM_KITS = [
@@ -110,6 +111,7 @@ const createPlaceholderRoster = (count: number, prefix: string) => {
   return Array.from({ length: count }, (_, index) => ({
     id: `${prefix}-${index + 1}`,
     name: `${prefix} Player ${index + 1}`,
+    shirtNo: index + 1,
     age: 24,
     heightCm: 180,
     weightKg: 75,
@@ -117,14 +119,14 @@ const createPlaceholderRoster = (count: number, prefix: string) => {
     rightFoot: 50,
     nationality: 'Unknown',
     positions: [],
-    attributes: {},
+    attributes: Object.fromEntries(attributeIds.map((attributeId) => [attributeId, 56 + (index % 5) * 2])),
     playstyles: [],
     playstylesPlus: []
   }));
 };
 
 const normalizeRoster = (team: TeamImport | null, fallbackPrefix: string) => {
-  const roster = team?.players?.length ? team.players : createPlaceholderRoster(11, fallbackPrefix);
+  const roster = team?.players?.length ? team.players : createPlaceholderRoster(20, fallbackPrefix);
   return roster.map((player, index) => ({
     ...player,
     id: player.id ?? `${fallbackPrefix}-${index + 1}`
@@ -165,18 +167,13 @@ const buildTeamSetup = (
   };
 };
 
-const buildSetupFromTeams = (teams: TeamImport[]) => {
+export const buildSetupFromTeams = (teams: TeamImport[]) => {
   return {
     teams: [
       buildTeamSetup(teams[0] ?? null, 'home', TEAM_KITS[0], false),
       buildTeamSetup(teams[1] ?? null, 'away', TEAM_KITS[1], true)
     ]
   } satisfies TeamSetupState;
-};
-
-const canStartMatch = (setup: TeamSetupState | null) => {
-  if (!setup) return false;
-  return setup.teams.every((team) => team.slots.every((slot) => slot.playerId));
 };
 
 const roleGroups = Object.entries(referenceData.roles);
@@ -252,7 +249,10 @@ const TeamSetupPage = () => {
   const { state, dispatch } = useAppState();
   const [importErrors, setImportErrors] = useState<ImportError[]>([]);
   const [importSummary, setImportSummary] = useState<{ teams: number; players: number } | null>(null);
-  const [teamSetup, setTeamSetup] = useState<TeamSetupState>(() => buildSetupFromTeams([]));
+  const [pendingImportedTeams, setPendingImportedTeams] = useState<TeamImport[] | null>(null);
+  const [teamSetup, setTeamSetup] = useState<TeamSetupState>(
+    () => state.teamSetup ?? buildSetupFromTeams([])
+  );
   const [selectedTeamIndex, setSelectedTeamIndex] = useState(0);
   const [selectedPresetId, setSelectedPresetId] = useState(CUSTOM_PRESET_ID);
   const [selectedTacticPresetByTeam, setSelectedTacticPresetByTeam] = useState<Record<string, string>>({
@@ -260,6 +260,7 @@ const TeamSetupPage = () => {
     away: 'custom'
   });
   const [instructionTab, setInstructionTab] = useState<'in' | 'transition' | 'out'>('in');
+  const setupIssues = useMemo(() => validateTeamSetup(teamSetup), [teamSetup]);
 
   const transitionInstructionIds = new Set([
     'attacking_transition',
@@ -334,9 +335,7 @@ const TeamSetupPage = () => {
     setImportErrors(result.errors);
     setImportSummary({ teams: teamCount, players: playerCount });
 
-    if (result.teams.length) {
-      setTeamSetup(buildSetupFromTeams(result.teams));
-    }
+    setPendingImportedTeams(result.teams.length ? result.teams : null);
   };
 
   const updateTeam = (teamId: string, updater: (team: TeamSetup) => TeamSetup) => {
@@ -645,19 +644,33 @@ const TeamSetupPage = () => {
             onChange={handleImport}
             style={{ display: 'none' }}
           />
-          <button className="button" onClick={handleStart} disabled={!canStartMatch(teamSetup)}>
+          <button className="button" onClick={handleStart} disabled={setupIssues.length > 0}>
             Start Match
           </button>
         </div>
-        {!canStartMatch(teamSetup) && (
+        {setupIssues.length > 0 && (
           <div style={{ marginTop: '12px' }}>
-            Assign 11 players for each team to enable Match start.
+            <strong>Resolve these setup issues:</strong>
+            <ul>
+              {setupIssues.slice(0, 5).map((issue) => <li key={`${issue.path}-${issue.message}`}>{issue.message}</li>)}
+            </ul>
           </div>
         )}
         {importSummary && (
-          <p style={{ marginTop: '16px' }}>
-            Imported {importSummary.players} players across {importSummary.teams} teams.
-          </p>
+          <div style={{ marginTop: '16px' }}>
+            <p>Preview: {importSummary.players} valid players across {importSummary.teams} teams.</p>
+            {pendingImportedTeams && (
+              <button
+                className="button secondary"
+                onClick={() => {
+                  setTeamSetup(buildSetupFromTeams(pendingImportedTeams));
+                  setPendingImportedTeams(null);
+                }}
+              >
+                Apply Imported Teams
+              </button>
+            )}
+          </div>
         )}
         {importErrors.length > 0 && (
           <div style={{ marginTop: '16px' }}>
@@ -674,6 +687,22 @@ const TeamSetupPage = () => {
             {importErrors.length > 5 && <div>More issues detected. Please fix the file.</div>}
           </div>
         )}
+        <details style={{ marginTop: '16px' }}>
+          <summary>Advanced</summary>
+          <label style={{ display: 'grid', gap: '6px', marginTop: '12px', maxWidth: '260px' }}>
+            Match seed
+            <input
+              type="number"
+              value={state.matchSeed ?? ''}
+              placeholder="Random"
+              onChange={(event) => dispatch({
+                type: 'SET_MATCH_SEED',
+                seed: event.target.value === '' ? null : Number(event.target.value)
+              })}
+            />
+          </label>
+          <p style={{ fontSize: '13px', color: '#6b7280' }}>Use the same setup and seed to reproduce a result.</p>
+        </details>
       </section>
 
       <section className="card">
@@ -894,7 +923,7 @@ const TeamSetupPage = () => {
         )}
 
         <div className="tactics-body">
-          <div className="tactics-column tactics-left">
+          <div className="tactics-column tactics-full">
             <div className="tactics-card">
               <div className="tactics-card-header">
                 <div>
@@ -948,126 +977,128 @@ const TeamSetupPage = () => {
             </div>
           </div>
 
-          <div className="tactics-column tactics-center">
-            <div className="tactics-card">
-              <div className="tactics-toolbar">
-                <div className="tactics-tabs">
-                  <button
-                    className={instructionTab === 'in' ? 'button' : 'button secondary'}
-                    onClick={() => setInstructionTab('in')}
-                  >
-                    In Possession
-                  </button>
-                  <button
-                    className={instructionTab === 'transition' ? 'button' : 'button secondary'}
-                    onClick={() => setInstructionTab('transition')}
-                  >
-                    In Transition
-                  </button>
-                  <button
-                    className={instructionTab === 'out' ? 'button' : 'button secondary'}
-                    onClick={() => setInstructionTab('out')}
-                  >
-                    Out of Possession
+          <div className="tactics-split">
+            <div className="tactics-column tactics-center">
+              <div className="tactics-card">
+                <div className="tactics-toolbar">
+                  <div className="tactics-tabs">
+                    <button
+                      className={instructionTab === 'in' ? 'button' : 'button secondary'}
+                      onClick={() => setInstructionTab('in')}
+                    >
+                      In Possession
+                    </button>
+                    <button
+                      className={instructionTab === 'transition' ? 'button' : 'button secondary'}
+                      onClick={() => setInstructionTab('transition')}
+                    >
+                      In Transition
+                    </button>
+                    <button
+                      className={instructionTab === 'out' ? 'button' : 'button secondary'}
+                      onClick={() => setInstructionTab('out')}
+                    >
+                      Out of Possession
+                    </button>
+                  </div>
+                  <button className="button secondary" onClick={randomizeInstructions}>
+                    Randomize Instructions
                   </button>
                 </div>
-                <button className="button secondary" onClick={randomizeInstructions}>
-                  Randomize Instructions
-                </button>
-              </div>
-              <div className="instruction-grid">
-                {instructionGroups[instructionTab].map((instruction) => (
-                  <div key={instruction.id} className="instruction-card" title={instruction.description}>
-                    <div className="instruction-title">{instruction.name}</div>
-                    <select
-                      className="select compact"
-                      value={selectedTeam.instructions[instruction.id] ?? ''}
-                      onChange={(event) => updateInstruction(instruction.id, event.target.value)}
-                      title={instruction.description}
-                      aria-label={`${instruction.name} instruction`}
-                    >
-                      {instruction.options?.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
+                <div className="instruction-grid">
+                  {instructionGroups[instructionTab].map((instruction) => (
+                    <div key={instruction.id} className="instruction-card" title={instruction.description}>
+                      <div className="instruction-title">{instruction.name}</div>
+                      <select
+                        className="select compact"
+                        value={selectedTeam.instructions[instruction.id] ?? ''}
+                        onChange={(event) => updateInstruction(instruction.id, event.target.value)}
+                        title={instruction.description}
+                        aria-label={`${instruction.name} instruction`}
+                      >
+                        {instruction.options?.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="tactics-column tactics-right">
-            <div className="tactics-card lineup-card">
-              <div className="lineup-title">Lineup</div>
-              <div className="lineup-header">
-                <span>Pos</span>
-                <span>Player</span>
-                <span>Role</span>
-                <span>Duty</span>
-              </div>
-              <div className="lineup-grid">
-                {selectedTeam.slots.map((slot) => {
-                  const roleDescription = getRoleDescription(slot.roleId);
-                  const dutyDescription = getDutyDescription(slot.dutyId);
-                  return (
-                    <div key={slot.id} className="lineup-row">
-                    <div className="lineup-cell lineup-pos">{slot.label}</div>
-                    <div className="lineup-cell">
-                      <select
-                        className="select compact"
-                        value={slot.playerId ?? ''}
-                        onChange={(event) => handleSlotPlayerChange(slot.id, event.target.value)}
-                        aria-label={`Player for ${slot.label}`}
-                      >
-                        <option value="">Select</option>
-                        {selectedTeam.roster.map((player) => (
-                          <option key={player.id} value={player.id}>
-                            {player.name}
-                          </option>
-                        ))}
-                      </select>
+            <div className="tactics-column tactics-right">
+              <div className="tactics-card lineup-card">
+                <div className="lineup-title">Lineup</div>
+                <div className="lineup-header">
+                  <span>Pos</span>
+                  <span>Player</span>
+                  <span>Role</span>
+                  <span>Duty</span>
+                </div>
+                <div className="lineup-grid">
+                  {selectedTeam.slots.map((slot) => {
+                    const roleDescription = getRoleDescription(slot.roleId);
+                    const dutyDescription = getDutyDescription(slot.dutyId);
+                    return (
+                      <div key={slot.id} className="lineup-row">
+                      <div className="lineup-cell lineup-pos">{slot.label}</div>
+                      <div className="lineup-cell">
+                        <select
+                          className="select compact"
+                          value={slot.playerId ?? ''}
+                          onChange={(event) => handleSlotPlayerChange(slot.id, event.target.value)}
+                          aria-label={`Player for ${slot.label}`}
+                        >
+                          <option value="">Select</option>
+                          {selectedTeam.roster.map((player) => (
+                            <option key={player.id} value={player.id}>
+                              {player.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="lineup-cell">
+                        <select
+                          className="select compact"
+                          value={slot.roleId ?? ''}
+                          onChange={(event) => handleSlotRoleChange(slot.id, event.target.value)}
+                          title={roleDescription || 'Select a role'}
+                          aria-label={`Role for ${slot.label}${roleDescription ? `: ${roleDescription}` : ''}`}
+                        >
+                          <option value="">Select</option>
+                          {roleGroups.map(([groupKey, roles]) => (
+                            <optgroup key={groupKey} label={toLabel(groupKey)}>
+                              {roles.map((role) => (
+                                <option key={role.id} value={role.id}>
+                                  {role.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="lineup-cell">
+                        <select
+                          className="select compact"
+                          value={slot.dutyId ?? ''}
+                          onChange={(event) => handleSlotDutyChange(slot.id, event.target.value)}
+                          title={dutyDescription || 'Select a duty'}
+                          aria-label={`Duty for ${slot.label}${dutyDescription ? `: ${dutyDescription}` : ''}`}
+                        >
+                          <option value="">Select</option>
+                          {referenceData.duties.map((duty) => (
+                            <option key={duty.id} value={duty.id}>
+                              {duty.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                    <div className="lineup-cell">
-                      <select
-                        className="select compact"
-                        value={slot.roleId ?? ''}
-                        onChange={(event) => handleSlotRoleChange(slot.id, event.target.value)}
-                        title={roleDescription || 'Select a role'}
-                        aria-label={`Role for ${slot.label}${roleDescription ? `: ${roleDescription}` : ''}`}
-                      >
-                        <option value="">Select</option>
-                        {roleGroups.map(([groupKey, roles]) => (
-                          <optgroup key={groupKey} label={toLabel(groupKey)}>
-                            {roles.map((role) => (
-                              <option key={role.id} value={role.id}>
-                                {role.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="lineup-cell">
-                      <select
-                        className="select compact"
-                        value={slot.dutyId ?? ''}
-                        onChange={(event) => handleSlotDutyChange(slot.id, event.target.value)}
-                        title={dutyDescription || 'Select a duty'}
-                        aria-label={`Duty for ${slot.label}${dutyDescription ? `: ${dutyDescription}` : ''}`}
-                      >
-                        <option value="">Select</option>
-                        {referenceData.duties.map((duty) => (
-                          <option key={duty.id} value={duty.id}>
-                            {duty.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>

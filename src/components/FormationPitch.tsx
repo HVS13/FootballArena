@@ -1,7 +1,38 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { LineupSlot } from '../domain/teamSetupTypes';
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const parseHexColor = (value: string) => {
+  const hex = value.replace('#', '').trim();
+  if (hex.length === 3) {
+    const [r, g, b] = hex.split('');
+    return {
+      r: parseInt(r + r, 16),
+      g: parseInt(g + g, 16),
+      b: parseInt(b + b, 16)
+    };
+  }
+  if (hex.length === 6) {
+    return {
+      r: parseInt(hex.slice(0, 2), 16),
+      g: parseInt(hex.slice(2, 4), 16),
+      b: parseInt(hex.slice(4, 6), 16)
+    };
+  }
+  return null;
+};
+
+const getReadableTextColor = (value: string) => {
+  const rgb = parseHexColor(value);
+  if (!rgb) return '#0f172a';
+  const channels = [rgb.r, rgb.g, rgb.b].map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.03928 ? normalized / 12.92 : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  });
+  const luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  return luminance > 0.6 ? '#0f172a' : '#f8fafc';
+};
 
 type FormationPitchProps = {
   slots: LineupSlot[];
@@ -27,6 +58,9 @@ const FormationPitch = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
   const isInteractive = interactive && typeof onPositionChange === 'function';
+  const tokenTextColor = getReadableTextColor(primaryColor);
+  const arcLeftId = useId();
+  const arcRightId = useId();
 
   const labels = useMemo(
     () =>
@@ -73,14 +107,33 @@ const FormationPitch = ({
 
   return (
     <div className="formation-pitch" ref={containerRef}>
-      <div className="pitch-lines">
-        <div className="pitch-penalty left" />
-        <div className="pitch-penalty right" />
-        <div className="pitch-six left" />
-        <div className="pitch-six right" />
-        <div className="pitch-spot center" />
-        <div className="pitch-spot left" />
-        <div className="pitch-spot right" />
+      <div className="pitch-lines" aria-hidden="true">
+        <svg viewBox="0 0 105 68" preserveAspectRatio="none">
+          <defs>
+            <clipPath id={arcLeftId}>
+              <rect x="16.5" y="0" width="88.5" height="68" />
+            </clipPath>
+            <clipPath id={arcRightId}>
+              <rect x="0" y="0" width="88.5" height="68" />
+            </clipPath>
+          </defs>
+          <rect className="pitch-outline" x="0" y="0" width="105" height="68" />
+          <line className="pitch-half" x1="52.5" y1="0" x2="52.5" y2="68" />
+          <circle className="pitch-center-circle" cx="52.5" cy="34" r="9.15" />
+          <circle className="pitch-spot" cx="52.5" cy="34" r="0.35" />
+          <rect className="pitch-box" x="0" y="13.84" width="16.5" height="40.32" />
+          <rect className="pitch-box" x="88.5" y="13.84" width="16.5" height="40.32" />
+          <rect className="pitch-six" x="0" y="24.84" width="5.5" height="18.32" />
+          <rect className="pitch-six" x="99.5" y="24.84" width="5.5" height="18.32" />
+          <circle className="pitch-spot" cx="11" cy="34" r="0.35" />
+          <circle className="pitch-spot" cx="94" cy="34" r="0.35" />
+          <circle className="pitch-arc" cx="11" cy="34" r="9.15" clipPath={`url(#${arcLeftId})`} />
+          <circle className="pitch-arc" cx="94" cy="34" r="9.15" clipPath={`url(#${arcRightId})`} />
+          <path className="pitch-corner" d="M 0 1 A 1 1 0 0 1 1 0" />
+          <path className="pitch-corner" d="M 104 0 A 1 1 0 0 1 105 1" />
+          <path className="pitch-corner" d="M 0 67 A 1 1 0 0 0 1 68" />
+          <path className="pitch-corner" d="M 104 68 A 1 1 0 0 0 105 67" />
+        </svg>
       </div>
       {slots.map((slot, index) => (
         <div
@@ -97,14 +150,13 @@ const FormationPitch = ({
             type="button"
             className="player-token"
             style={
-              {
-                backgroundColor: primaryColor,
-                borderColor: secondaryColor,
-                color: secondaryColor,
-                cursor: isInteractive ? 'grab' : 'default',
-                ['--token-secondary' as string]: secondaryColor
-              } as CSSProperties
-            }
+            {
+              cursor: isInteractive ? 'grab' : 'default',
+              ['--token-primary' as string]: primaryColor,
+              ['--token-secondary' as string]: secondaryColor,
+              ['--token-text' as string]: tokenTextColor
+            } as CSSProperties
+          }
             onPointerDown={
               isInteractive
                 ? (event) => {
