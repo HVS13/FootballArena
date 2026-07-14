@@ -1,11 +1,13 @@
 import { DEFAULT_PITCH, PlayerState, SimulationState } from '../domain/simulationTypes';
 import { DEFAULT_ENVIRONMENT, EnvironmentState } from '../domain/environmentTypes';
 import { TUNING } from '../data/tuning';
+import { createSeededRandom, RandomSource } from './engine/seededRandom';
 
 type PhysicsConfig = {
   pitchWidth?: number;
   pitchHeight?: number;
   environment?: EnvironmentState;
+  random?: RandomSource;
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -36,11 +38,13 @@ export class PhysicsAgent {
   private pitchWidth: number;
   private pitchHeight: number;
   private environment: EnvironmentState;
+  private random: RandomSource;
 
   constructor(config: PhysicsConfig = {}) {
     this.pitchWidth = config.pitchWidth ?? DEFAULT_PITCH.width;
     this.pitchHeight = config.pitchHeight ?? DEFAULT_PITCH.height;
     this.environment = config.environment ?? DEFAULT_ENVIRONMENT;
+    this.random = config.random ?? createSeededRandom(Date.now());
   }
 
   setEnvironment(environment: EnvironmentState) {
@@ -116,15 +120,15 @@ export class PhysicsAgent {
 
       player.targetTimer -= dt;
       if (player.targetTimer <= 0) {
-        player.targetTimer = (2 + Math.random() * 3) / wanderScale;
+        player.targetTimer = (2 + this.random() * 3) / wanderScale;
         player.targetPosition = {
           x: clamp(
-            basePosition.x + (Math.random() * 2 - 1) * wanderRadius,
+            basePosition.x + (this.random() * 2 - 1) * wanderRadius,
             player.radius,
             this.pitchWidth - player.radius
           ),
           y: clamp(
-            basePosition.y + (Math.random() * 2 - 1) * wanderRadius,
+            basePosition.y + (this.random() * 2 - 1) * wanderRadius,
             player.radius,
             this.pitchHeight - player.radius
           )

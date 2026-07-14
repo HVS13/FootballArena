@@ -5,10 +5,10 @@ import App from '../App';
 
 test('renders app header', () => {
   render(
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <App />
     </BrowserRouter>
   );
 
-  expect(screen.getByText('Football Arena')).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Football Arena' })).toBeTruthy();
 });

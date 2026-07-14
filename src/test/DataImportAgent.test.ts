@@ -119,4 +119,21 @@ describe('DataImportAgent', () => {
     expect(result.teams[0].players).toHaveLength(1);
     expect(result.teams[1].players).toHaveLength(1);
   });
+
+  test('normalizes equivalent CSV and JSON player data identically', () => {
+    const agent = new DataImportAgent();
+    const rawPlayer = {
+      id: 'p-9', name: 'Parity Player', positions: 'ST|RW', age: 25, heightCm: 181,
+      weightKg: 75, leftFoot: 12, rightFoot: 18, nationality: 'Indonesia', shirtNo: 9,
+      ...buildAttributes(11)
+    };
+    const json = agent.importText(JSON.stringify({ teams: [{ name: 'Parity FC', players: [rawPlayer] }] }), 'json');
+    const headers = ['team', ...Object.keys(rawPlayer)];
+    const values = ['Parity FC', ...Object.values(rawPlayer).map(String)];
+    const csv = agent.importText(`${headers.join(',')}\n${values.join(',')}`, 'csv');
+
+    expect(json.errors).toEqual([]);
+    expect(csv.errors).toEqual([]);
+    expect(csv.teams).toEqual(json.teams);
+  });
 });

@@ -1,4 +1,27 @@
 export const TUNING = {
+  version: 'local-v0.1.0',
+  match: {
+    actionCooldownMultiplier: 3.5,
+    passChanceFloor: 0.79,
+    passChanceCeiling: 0.94,
+    interceptionChanceMultiplier: 0.2,
+    offsideTargetScoreMultiplier: 0.03,
+    parryToCornerChance: 0.18,
+    fallbackSaveToCornerChance: 0.2
+  },
+  timing: {
+    defensiveChallengeIntervalSeconds: 0.2
+  },
+  discipline: {
+    foulBaseChance: 0.015,
+    foulChanceMultiplier: 0.65,
+    contestFoulChanceMultiplier: 0.55,
+    contestTackleChanceMultiplier: 0.22,
+    yellowBaseChance: 0.04,
+    yellowSeverityScale: 0.16,
+    redBaseChance: 0.005,
+    redSeverityScale: 0.02
+  },
   pressure: {
     baseDistance: 6,
     minDistance: 3.5,

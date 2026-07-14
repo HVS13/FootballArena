@@ -3,6 +3,7 @@ import { DEFAULT_ENVIRONMENT, EnvironmentState } from '../domain/environmentType
 import { CommentaryLine, MatchStats, TeamMatchStats } from '../domain/matchTypes';
 import { PlayerAttributes } from '../domain/types';
 import { TeamSetupState } from '../domain/teamSetupTypes';
+import { validateTeamSetup } from '../domain/teamSetupValidation';
 import { getRoleDutyBehavior, RoleBehavior } from '../data/roleBehavior';
 import { getMatchImportanceWeight } from '../data/matchImportance';
 import { DEFAULT_SET_PIECE_SETTINGS, SetPieceWizardSettings } from '../data/setPieceWizard';
@@ -10,20 +11,14 @@ import { TUNING } from '../data/tuning';
 import { clamp, cloneState, interpolateState } from './engine/engineMath';
 import {
   DecisionContext,
-  chooseGoalkeeperTarget,
   choosePassTarget,
   getActionCooldown,
-  getAerialTargetScore,
-  getDesiredPassDistance,
-  getOpponentDistance,
   getPassLeadPosition,
   getPressureOnPlayer,
-  getShotSkill,
   findNearestOpponent,
   handleGoalkeeperPossession,
   shouldCarryBall,
   shouldShoot,
-  buildGoalkeeperInstructions,
   getGoalkeeperCooldown
 } from './engine/decisionEngine';
 import {
@@ -41,17 +36,11 @@ import {
   EventContext,
   adjustPlayerMorale,
   adjustTeamMorale,
-  applyAdaptiveInstructions,
   applyHalftimeRecovery,
   buildAdaptationState,
-  createAdaptationWindow,
   getInitialMorale,
   getMoraleFactor,
   initializePlayerState,
-  isAdaptationEnabled,
-  isCrossPass,
-  isFinalThird,
-  recordLaneEntry,
   recordOpponentPassTendency,
   recordOpponentShotTendency,
   updateFatigue,
@@ -76,7 +65,6 @@ import {
 } from './engine/setPieceEngine';
 import {
   AdaptationState,
-  AdaptationWindow,
   PossessionState,
   RestartState,
   RoleArchetypeProfile,
@@ -87,6 +75,9 @@ import { CommentaryAgent } from './CommentaryAgent';
 import { PhysicsAgent } from './PhysicsAgent';
 import { RuleDecision, RulesAgent } from './RulesAgent';
 import { StatsAgent } from './StatsAgent';
+import { createSeededRandom, normalizeSeed, RandomSource } from './engine/seededRandom';
+import { EventInput, MatchEventRecorder } from './MatchEventRecorder';
+import { MatchCommand, MatchResult } from '../domain/matchContracts';
 
 type EngineConfig = {
   pitch?: PitchDimensions;
@@ -100,6 +91,9 @@ type EngineConfig = {
     restart: RestartInfo | null,
     status: MatchStatus
   ) => void;
+  seed?: number;
+  random?: RandomSource;
+  autoContinueHalftime?: boolean;
 };
 
 type LoopState = {
@@ -170,7 +164,8 @@ const FULL_DURATION = 5400;
 const HALFTIME_BREAK = 60;
 const MAX_STOPPAGE_FIRST = 5;
 const MAX_STOPPAGE_SECOND = 7;
-const pick = <T,>(options: T[]) => options[Math.floor(Math.random() * options.length)];
+const pick = <T,>(options: T[], random: RandomSource) =>
+  options[Math.floor(random() * options.length)];
 const TRICK_LINES = [
   '{player} beats a man with a rainbow flick.',
   '{player} rolls past a marker with a slick stepover.',
@@ -245,7 +240,7 @@ const formation442 = [
   { x: 0.7, y: 0.65 }
 ];
 
-const buildPlayers = (teamId: string, pitch: PitchDimensions, isHome: boolean) => {
+const buildPlayers = (teamId: string, pitch: PitchDimensions, isHome: boolean, random: RandomSource) => {
   return formation442.map((slot, index) => {
     const x = isHome ? slot.x : 1 - slot.x;
     const position = {
@@ -261,7 +256,7 @@ const buildPlayers = (teamId: string, pitch: PitchDimensions, isHome: boolean) =
       velocity: { x: 0, y: 0 },
       homePosition: { ...position },
       targetPosition: { ...position },
-      targetTimer: Math.random() * 3,
+      targetTimer: random() * 3,
       radius: 1.2,
       shirtNo: index + 1,
       age: 24,
@@ -304,11 +299,11 @@ const buildOfficials = (pitch: PitchDimensions) => [
   }
 ];
 
-const buildDefaultState = (pitch: PitchDimensions): SimulationState => {
+const buildDefaultState = (pitch: PitchDimensions, random: RandomSource): SimulationState => {
   const teams = buildDefaultTeams();
   const players = [
-    ...buildPlayers(teams[0].id, pitch, true),
-    ...buildPlayers(teams[1].id, pitch, false)
+    ...buildPlayers(teams[0].id, pitch, true, random),
+    ...buildPlayers(teams[1].id, pitch, false, random)
   ];
 
   return {
@@ -326,7 +321,11 @@ const buildDefaultState = (pitch: PitchDimensions): SimulationState => {
   };
 };
 
-const buildStateFromSetup = (pitch: PitchDimensions, setup: TeamSetupState): SimulationState => {
+const buildStateFromSetup = (
+  pitch: PitchDimensions,
+  setup: TeamSetupState,
+  random: RandomSource
+): SimulationState => {
   const teams = setup.teams.map((team) => ({
     id: team.id,
     name: team.name,
@@ -353,7 +352,7 @@ const buildStateFromSetup = (pitch: PitchDimensions, setup: TeamSetupState): Sim
       return {
         id: rosterPlayer?.id ?? `${team.id}-${slot.id}`,
         name,
-        shirtNo: rosterPlayer?.shirtNo,
+        shirtNo: rosterPlayer?.shirtNo ?? index + 1,
         age,
         heightCm,
         weightKg,
@@ -367,7 +366,7 @@ const buildStateFromSetup = (pitch: PitchDimensions, setup: TeamSetupState): Sim
         velocity: { x: 0, y: 0 },
         homePosition: { ...position },
         targetPosition: { ...position },
-        targetTimer: Math.random() * 3,
+        targetTimer: random() * 3,
         radius: 1.2,
         attributes: rosterPlayer?.attributes ?? {},
         playstyles: rosterPlayer?.playstyles ?? [],
@@ -480,6 +479,8 @@ const buildSubstitutionTrackers = (state: SimulationState, setup: TeamSetupState
 };
 
 export class GameEngineAgent {
+  private seed: number;
+  private random: RandomSource;
   private pitch: PitchDimensions;
   private tickRate: number;
   private physics: PhysicsAgent;
@@ -503,6 +504,8 @@ export class GameEngineAgent {
   private restartState: RestartState | null = null;
   private possession: PossessionState | null = null;
   private actionCooldown = 0;
+  private defensiveChallengeCooldown = 0;
+  private possessionCooldown = 0;
   private environment: EnvironmentState;
   private matchImportance: number;
   private halftimeRecovered = false;
@@ -517,34 +520,46 @@ export class GameEngineAgent {
   private kickoffTeamIdSecondHalf: string | null = null;
   private sidesSwitched = false;
   private lastTouchTeamId: string | null = null;
-  private lastTouchPlayerId: string | null = null;
   private lastDroppedBallAt = -999;
   private halfStartStats: MatchStats;
+  private eventRecorder = new MatchEventRecorder();
+  private autoContinueHalftime: boolean;
 
   constructor(config: EngineConfig = {}) {
+    if (config.teamSetup) {
+      const issues = validateTeamSetup(config.teamSetup);
+      if (issues.length) throw new Error(`Invalid match configuration: ${issues[0].message}`);
+    }
+    this.seed = normalizeSeed(config.seed ?? Date.now());
+    this.random = config.random ?? createSeededRandom(this.seed);
+    this.autoContinueHalftime = config.autoContinueHalftime ?? true;
     this.pitch = config.pitch ?? DEFAULT_PITCH;
-    this.tickRate = config.tickRate ?? 60;
+    this.tickRate = config.tickRate ?? 20;
     this.environment = config.environment ?? DEFAULT_ENVIRONMENT;
     this.matchImportance = getMatchImportanceWeight(this.environment.matchImportance);
     this.physics = new PhysicsAgent({
       pitchWidth: this.pitch.width,
       pitchHeight: this.pitch.height,
-      environment: this.environment
+      environment: this.environment,
+      random: this.random
     });
     this.teamSetup = config.teamSetup ?? null;
-    this.state = this.teamSetup ? buildStateFromSetup(this.pitch, this.teamSetup) : buildDefaultState(this.pitch);
+    this.state = this.teamSetup
+      ? buildStateFromSetup(this.pitch, this.teamSetup, this.random)
+      : buildDefaultState(this.pitch, this.random);
     this.prevState = cloneState(this.state);
     this.rules = new RulesAgent({
       pitch: this.pitch,
       homeTeamId: this.state.teams[0]?.id ?? 'home',
       matchImportance: this.matchImportance,
-      environment: this.environment
+      environment: this.environment,
+      random: this.random
     });
     this.loopState = { running: false, paused: false, speed: 2 };
     this.onRender = config.onRender;
     this.onMatchUpdate = config.onMatchUpdate;
     this.statsAgent = new StatsAgent(this.state.teams.map((team) => team.id));
-    this.commentaryAgent = new CommentaryAgent();
+    this.commentaryAgent = new CommentaryAgent(this.random);
     this.actionCooldown = 0;
     this.substitutionTrackers = buildSubstitutionTrackers(this.state, this.teamSetup);
     this.adaptationState = this.buildAdaptationState();
@@ -553,7 +568,7 @@ export class GameEngineAgent {
     this.halfStartStats = this.cloneMatchStats(this.statsAgent.getStats());
     const [homeTeam, awayTeam] = this.state.teams;
     if (homeTeam && awayTeam) {
-      this.kickoffTeamIdFirstHalf = Math.random() < 0.5 ? homeTeam.id : awayTeam.id;
+      this.kickoffTeamIdFirstHalf = this.random() < 0.5 ? homeTeam.id : awayTeam.id;
       this.kickoffTeamIdSecondHalf =
         this.kickoffTeamIdFirstHalf === homeTeam.id ? awayTeam.id : homeTeam.id;
     }
@@ -561,6 +576,7 @@ export class GameEngineAgent {
 
   private getDecisionContext(): DecisionContext {
     return {
+      random: this.random,
       state: this.state,
       pitch: this.pitch,
       rules: this.rules,
@@ -602,6 +618,7 @@ export class GameEngineAgent {
 
   private getEventContext(): EventContext {
     return {
+      random: this.random,
       state: this.state,
       pitch: this.pitch,
       environment: this.environment,
@@ -667,6 +684,107 @@ export class GameEngineAgent {
 
   setSpeed(speed: number) {
     this.loopState.speed = speed;
+  }
+
+  submitCommand(command: MatchCommand) {
+    switch (command.type) {
+      case 'pause':
+        this.setPaused(true);
+        return { ok: true as const };
+      case 'resume':
+        if (this.isMatchComplete()) return { ok: false as const, error: 'Match has finished.' };
+        this.setPaused(false);
+        return { ok: true as const };
+      case 'set_speed':
+        this.setSpeed(command.speed);
+        return { ok: true as const };
+      case 'start_second_half':
+        if (this.matchPhase !== 'half_time') {
+          return { ok: false as const, error: 'The second half can only start at half-time.' };
+        }
+        this.beginSecondHalf();
+        return { ok: true as const };
+      case 'substitute':
+        return this.applySubstitution(
+          command.teamId,
+          command.offPlayerId,
+          command.onPlayerId
+        );
+    }
+  }
+
+  advanceTicks(tickCount = 1) {
+    const count = Math.max(0, Math.floor(tickCount));
+    const dt = 1 / this.tickRate;
+    if (this.matchPhase === 'pre_kickoff') {
+      this.resetForKickoff();
+    }
+    for (let index = 0; index < count; index += 1) {
+      if (!this.advanceSimulationTick(dt)) break;
+    }
+    return cloneState(this.state);
+  }
+
+  getSnapshot() {
+    return cloneState(this.state);
+  }
+
+  getStats() {
+    return this.cloneMatchStats(this.statsAgent.getStats());
+  }
+
+  getCommentary() {
+    return this.commentaryAgent.getLines();
+  }
+
+  getEvents() {
+    return this.eventRecorder.getEvents();
+  }
+
+  exportMatchResult(): MatchResult {
+    return {
+      engineVersion: '0.1.0',
+      tuningVersion: TUNING.version,
+      exportedAt: new Date().toISOString(),
+      config: {
+        version: 1,
+        seed: this.seed,
+        rulesProfile: 'standard_90',
+        teams: this.teamSetup ? structuredClone(this.teamSetup) : null,
+        environment: structuredClone(this.environment)
+      },
+      finalSnapshot: {
+        phase: this.matchPhase,
+        state: cloneState(this.state),
+        stats: this.cloneMatchStats(this.statsAgent.getStats())
+      },
+      events: this.getEvents()
+    };
+  }
+
+  private emitEvent(event: EventInput) {
+    const recorded = this.eventRecorder.record(event);
+    this.statsAgent.recordEvent(recorded);
+    return recorded;
+  }
+
+  private setPossession(possession: PossessionState | null) {
+    if (
+      this.possession?.teamId === possession?.teamId &&
+      this.possession?.playerId === possession?.playerId
+    ) return;
+    this.possession = possession;
+    this.emitEvent({
+      type: 'PossessionChanged',
+      timeSeconds: this.state.time,
+      teamId: possession?.teamId,
+      playerId: possession?.playerId,
+      data: { controlled: Boolean(possession) }
+    });
+  }
+
+  isMatchComplete() {
+    return this.matchPhase === 'full_time';
   }
 
   getPitch() {
@@ -752,7 +870,7 @@ export class GameEngineAgent {
       velocity: { x: 0, y: 0 },
       homePosition: { ...offPlayer.homePosition },
       targetPosition: { ...offPlayer.homePosition },
-      targetTimer: Math.random() * 3,
+      targetTimer: this.random() * 3,
       tacticalPosition: { ...offPlayer.homePosition },
       tacticalWander: offPlayer.tacticalWander ?? 1,
       attributes: onMeta?.attributes ?? offPlayer.attributes,
@@ -777,11 +895,17 @@ export class GameEngineAgent {
     }
 
     const offName = tracker.rosterMeta.get(offPlayerId)?.name ?? offPlayer.name;
-    this.statsAgent.recordSubstitution(teamId);
     this.commentaryAgent.addLine(
       this.state.time,
       `Substitution for ${this.resolveTeamName(teamId)}: ${onName} replaces ${offName}.`
     );
+    this.emitEvent({
+      type: 'SubstitutionMade',
+      timeSeconds: this.state.time,
+      teamId,
+      playerId: onPlayerId,
+      data: { offPlayerId, onPlayerId }
+    });
 
     return { ok: true };
   }
@@ -797,24 +921,10 @@ export class GameEngineAgent {
       const dt = 1 / this.tickRate;
 
       while (this.accumulator >= dt) {
-        if (this.matchPhase === 'half_time') {
-          this.handleHalftimeTick(dt);
-          this.accumulator -= dt;
-          continue;
-        }
-        if (this.matchPhase === 'full_time') {
+        if (!this.advanceSimulationTick(dt)) {
           this.accumulator = 0;
           break;
         }
-
-        this.prevState = cloneState(this.state);
-        this.updateTacticalTargets();
-        this.physics.step(this.state, dt);
-        this.state.time += dt;
-        this.tickEvents(dt);
-        this.statsAgent.step(this.state, dt, this.possession?.teamId ?? null);
-        this.emitMinuteCommentary();
-        this.updateMatchFlow();
         this.accumulator -= dt;
       }
     }
@@ -831,11 +941,30 @@ export class GameEngineAgent {
     requestAnimationFrame(this.loop);
   };
 
+  private advanceSimulationTick(dt: number) {
+    if (this.matchPhase === 'half_time') {
+      if (this.autoContinueHalftime) this.handleHalftimeTick(dt);
+      return true;
+    }
+    if (this.matchPhase === 'full_time') return false;
+
+    this.prevState = cloneState(this.state);
+    this.updateTacticalTargets();
+    this.physics.step(this.state, dt);
+    this.state.time += dt;
+    this.tickEvents(dt);
+    this.statsAgent.step(this.state, dt, this.possession?.teamId ?? null);
+    this.emitMinuteCommentary();
+    this.updateMatchFlow();
+    return true;
+  }
+
   private tickEvents(dt: number) {
     this.updateFatigue(dt);
     this.updateMorale(dt);
     this.updateInjuries(dt);
     this.updateOpponentAdaptation();
+    this.possessionCooldown = Math.max(0, this.possessionCooldown - dt);
     if (this.handleDroppedBall()) {
       return;
     }
@@ -846,17 +975,20 @@ export class GameEngineAgent {
       this.handleRestart(dt);
       return;
     }
+    this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     this.updatePossession();
     if (!this.possession) {
-      this.actionCooldown = 0;
       return;
     }
 
-    this.syncBallToPossessor();
-    if (this.attemptDefensiveChallenge()) {
-      return;
+    this.syncBallToPossessor(dt);
+    this.defensiveChallengeCooldown = Math.max(0, this.defensiveChallengeCooldown - dt);
+    if (this.defensiveChallengeCooldown <= 0) {
+      this.defensiveChallengeCooldown = TUNING.timing.defensiveChallengeIntervalSeconds;
+      if (this.attemptDefensiveChallenge()) {
+        return;
+      }
     }
-    this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     if (this.actionCooldown > 0) return;
 
     this.handlePossessionAction();
@@ -897,6 +1029,7 @@ export class GameEngineAgent {
       home: homeSnapshot,
       away: awaySnapshot
     });
+    this.manageAiSubstitutions(currentMinute);
 
     this.lastMinuteMark = currentMinute;
     this.lastMinuteStats = this.cloneMatchStats(stats);
@@ -975,10 +1108,6 @@ export class GameEngineAgent {
     return buildAdaptationState(this.getEventContext());
   }
 
-  private createAdaptationWindow(): AdaptationWindow {
-    return createAdaptationWindow();
-  }
-
   private getInitialMorale(attributes?: PlayerAttributes) {
     return getInitialMorale(this.getEventContext(), attributes);
   }
@@ -991,16 +1120,8 @@ export class GameEngineAgent {
     updateMorale(this.getEventContext(), dt);
   }
 
-  private isAdaptationEnabled(teamId: string) {
-    return isAdaptationEnabled(this.getEventContext(), teamId);
-  }
-
   private updateOpponentAdaptation() {
     updateOpponentAdaptation(this.getEventContext());
-  }
-
-  private applyAdaptiveInstructions(teamId: string, updates: Record<string, string>) {
-    applyAdaptiveInstructions(this.getEventContext(), teamId, updates);
   }
 
   private recordOpponentPassTendency(
@@ -1013,18 +1134,6 @@ export class GameEngineAgent {
 
   private recordOpponentShotTendency(attackingTeamId: string, shooter: typeof this.state.players[number]) {
     recordOpponentShotTendency(this.getEventContext(), attackingTeamId, shooter);
-  }
-
-  private recordLaneEntry(window: AdaptationWindow, position: Vector2) {
-    recordLaneEntry(this.getEventContext(), window, position);
-  }
-
-  private isFinalThird(teamId: string, position: Vector2) {
-    return isFinalThird(this.getEventContext(), teamId, position);
-  }
-
-  private isCrossPass(attackingTeamId: string, passer: Vector2, receiver: Vector2) {
-    return isCrossPass(this.getEventContext(), attackingTeamId, passer, receiver);
   }
 
   private updateInjuries(dt: number) {
@@ -1052,34 +1161,19 @@ export class GameEngineAgent {
     return handleGoalkeeperPossession(this.getDecisionContext(), goalkeeper, instructions, pressure, decisionContext);
   }
 
-  private chooseGoalkeeperTarget(
-    goalkeeper: typeof this.state.players[number],
-    instructions: Record<string, string> | undefined
-  ) {
-    return chooseGoalkeeperTarget(this.getDecisionContext(), goalkeeper, instructions);
-  }
-
-  private getAerialTargetScore(player: typeof this.state.players[number], direction: number) {
-    return getAerialTargetScore(this.getDecisionContext(), player, direction);
-  }
-
-  private buildGoalkeeperInstructions(instructions: Record<string, string> | undefined) {
-    return buildGoalkeeperInstructions(instructions);
-  }
-
   private getGoalkeeperCooldown(instructions: Record<string, string> | undefined) {
     return getGoalkeeperCooldown(instructions);
   }
 
   private updatePossession() {
     if (this.restartState) {
-      this.possession = null;
+      this.setPossession(null);
       return;
     }
 
     const closest = this.findNearestPlayerToBall();
     if (!closest) {
-      this.possession = null;
+      this.setPossession(null);
       return;
     }
 
@@ -1087,7 +1181,6 @@ export class GameEngineAgent {
     const dy = closest.position.y - this.state.ball.position.y;
     const distance = Math.hypot(dx, dy);
     const speed = Math.hypot(this.state.ball.velocity.x, this.state.ball.velocity.y);
-
     const firstTouch = this.getAttribute(closest, 'first_touch');
     const technique = this.getAttribute(closest, 'technique');
     const composure = this.getAttribute(closest, 'composure');
@@ -1105,35 +1198,67 @@ export class GameEngineAgent {
       TUNING.control.maxSpeed
     );
 
+    if (this.possessionCooldown > 0 && speed > controlSpeed * 0.8) {
+      return;
+    }
+
     if (distance <= controlDistance) {
       if (speed > controlSpeed && this.possession?.playerId !== closest.id) {
         return;
       }
-      this.possession = { teamId: closest.teamId, playerId: closest.id };
+      if (speed <= controlSpeed || this.possession?.playerId === closest.id) {
+        this.setPossession({ teamId: closest.teamId, playerId: closest.id });
+      }
     } else {
-      this.possession = null;
+      this.setPossession(null);
     }
   }
 
-  private syncBallToPossessor() {
+  private syncBallToPossessor(dt: number) {
     if (!this.possession) return;
     const possessor = this.state.players.find((player) => player.id === this.possession?.playerId);
     if (!possessor) {
-      this.possession = null;
+      this.setPossession(null);
       return;
     }
     this.lastTouchTeamId = possessor.teamId;
-    this.lastTouchPlayerId = possessor.id;
 
+    const dribbling = this.getAttribute(possessor, 'dribbling');
+    const firstTouch = this.getAttribute(possessor, 'first_touch');
+    const technique = this.getAttribute(possessor, 'technique');
+    const balance = this.getAttribute(possessor, 'balance');
+    const composure = this.getAttribute(possessor, 'composure');
+    const controlSkill = clamp((dribbling + firstTouch + technique + balance + composure) / 500, 0, 1);
     const velLen = Math.hypot(possessor.velocity.x, possessor.velocity.y);
-    const dirX = velLen > 0.1 ? possessor.velocity.x / velLen : 1;
-    const dirY = velLen > 0.1 ? possessor.velocity.y / velLen : 0;
-    const offset = possessor.radius * 0.7;
-    const nextX = clamp(possessor.position.x + dirX * offset, 0.5, this.pitch.width - 0.5);
-    const nextY = clamp(possessor.position.y + dirY * offset, 0.5, this.pitch.height - 0.5);
-
-    this.state.ball.position = { x: nextX, y: nextY };
-    this.state.ball.velocity = { ...possessor.velocity };
+    const direction =
+      velLen > 0.15
+        ? { x: possessor.velocity.x / velLen, y: possessor.velocity.y / velLen }
+        : { x: this.getAttackDirection(possessor.teamId), y: 0 };
+    const offset = possessor.radius * (0.55 + controlSkill * 0.55);
+    const targetX = clamp(possessor.position.x + direction.x * offset, 0.5, this.pitch.width - 0.5);
+    const targetY = clamp(possessor.position.y + direction.y * offset, 0.5, this.pitch.height - 0.5);
+    const toTargetX = targetX - this.state.ball.position.x;
+    const toTargetY = targetY - this.state.ball.position.y;
+    const distance = Math.hypot(toTargetX, toTargetY);
+    if (distance > 0) {
+      const controlRate = 8 + controlSkill * 10;
+      const step = Math.min(distance, controlRate * dt);
+      const dirX = toTargetX / distance;
+      const dirY = toTargetY / distance;
+      this.state.ball.position.x = clamp(
+        this.state.ball.position.x + dirX * step,
+        0.5,
+        this.pitch.width - 0.5
+      );
+      this.state.ball.position.y = clamp(
+        this.state.ball.position.y + dirY * step,
+        0.5,
+        this.pitch.height - 0.5
+      );
+    }
+    const controlBlend = 0.6 + controlSkill * 0.35;
+    this.state.ball.velocity.x = possessor.velocity.x * controlBlend;
+    this.state.ball.velocity.y = possessor.velocity.y * controlBlend;
     this.state.ball.spin = { x: 0, y: 0 };
     this.state.ball.lastKickPower = 0;
   }
@@ -1189,7 +1314,7 @@ export class GameEngineAgent {
     if (defenderInstructions?.tackling === 'Aggressive') attemptChance += 0.04;
     if (defenderInstructions?.tackling === 'Ease Off') attemptChance -= 0.04;
     attemptChance = clamp(attemptChance, 0, TUNING.press.attemptMax);
-    if (Math.random() > attemptChance) return false;
+    if (this.random() > attemptChance) return false;
 
     const outcome = this.resolveTackleOutcome(possessor, defender, proximity, defenderInstructions);
     if (outcome === 'foul') {
@@ -1201,15 +1326,20 @@ export class GameEngineAgent {
     if (outcome === 'win') {
       this.state.ball.position = { ...defender.position };
       this.state.ball.velocity = { x: 0, y: 0 };
-      this.possession = { teamId: defender.teamId, playerId: defender.id };
+      this.setPossession({ teamId: defender.teamId, playerId: defender.id });
       this.lastTouchTeamId = defender.teamId;
-      this.lastTouchPlayerId = defender.id;
       this.actionCooldown = 0.35;
-      this.statsAgent.recordTackle(defender.teamId);
+      this.emitEvent({
+        type: 'TackleWon',
+        timeSeconds: this.state.time,
+        teamId: defender.teamId,
+        playerId: defender.id,
+        position: { ...defender.position }
+      });
 
       this.adjustPlayerMorale(defender.id, 1.2);
       this.adjustPlayerMorale(possessor.id, -1.6);
-      if (Math.random() < 0.35) {
+      if (this.random() < 0.35) {
         this.commentaryAgent.addLine(
           this.state.time,
           `${defender.name} wins the ball from ${possessor.name}.`
@@ -1260,8 +1390,9 @@ export class GameEngineAgent {
     tackleChance *= this.getPlaystyleMultiplier(possessor, 'press_proven', 0.95, 0.92);
     tackleChance *= this.getPlaystyleMultiplier(possessor, 'rapid', 0.96, 0.93);
     tackleChance *= this.getPlaystyleMultiplier(possessor, 'technical', 0.96, 0.93);
+    tackleChance *= TUNING.discipline.contestTackleChanceMultiplier;
 
-    tackleChance = clamp(tackleChance, 0.04, 0.55);
+    tackleChance = clamp(tackleChance, 0.01, 0.3);
 
     let foulChance = 0.04 + (aggression / 100) * 0.08;
     foulChance += (this.getAttribute(defender, 'dirtiness') / 100) * 0.12;
@@ -1276,13 +1407,14 @@ export class GameEngineAgent {
       1.1
     );
     foulChance *= collisionFactor;
+    foulChance *= TUNING.discipline.contestFoulChanceMultiplier;
 
-    foulChance = clamp(foulChance, 0.02, 0.35);
+    foulChance = clamp(foulChance, 0.005, 0.25);
 
-    if (Math.random() < tackleChance) {
-      return Math.random() < foulChance ? 'foul' : 'win';
+    if (this.random() < tackleChance) {
+      return this.random() < foulChance ? 'foul' : 'win';
     }
-    if (Math.random() < foulChance * 0.25) {
+    if (this.random() < foulChance * 0.25) {
       return 'foul';
     }
     return 'miss';
@@ -1292,7 +1424,7 @@ export class GameEngineAgent {
     if (!this.possession) return;
     const possessor = this.state.players.find((player) => player.id === this.possession?.playerId);
     if (!possessor) {
-      this.possession = null;
+      this.setPossession(null);
       return;
     }
 
@@ -1346,7 +1478,7 @@ export class GameEngineAgent {
   }
 
   private getCarryCommentary(player: typeof this.state.players[number], pressure: number) {
-    if (Math.random() > 0.14) return null;
+    if (this.random() > 0.14) return null;
     const roleId = player.roleId ?? null;
     const dutyId = player.dutyId ?? null;
     const hasTrick =
@@ -1355,16 +1487,16 @@ export class GameEngineAgent {
       this.hasPlaystyle(player, 'gamechanger') ||
       this.hasTrait(player, 'tries_to_play_way_out_of_trouble') ||
       this.hasTrait(player, 'knocks_ball_past_opponent');
-    if (hasTrick && Math.random() < 0.6) {
-      return pick(TRICK_LINES).replace('{player}', player.name);
+    if (hasTrick && this.random() < 0.6) {
+      return pick(TRICK_LINES, this.random).replace('{player}', player.name);
     }
-    if (this.isWideBackRole(roleId) && dutyId !== 'defend' && Math.random() < 0.6) {
-      return pick(OVERLAP_LINES).replace('{player}', player.name);
+    if (this.isWideBackRole(roleId) && dutyId !== 'defend' && this.random() < 0.6) {
+      return pick(OVERLAP_LINES, this.random).replace('{player}', player.name);
     }
     if (pressure > 0.6) {
       return `${player.name} rides the challenge and keeps going.`;
     }
-    return pick(CARRY_LINES).replace('{player}', player.name);
+    return pick(CARRY_LINES, this.random).replace('{player}', player.name);
   }
 
   private isWideBackRole(roleId: string | null) {
@@ -1398,10 +1530,6 @@ export class GameEngineAgent {
     return shouldShoot(this.getDecisionContext(), player, instructions, pressure, hasPassOption);
   }
 
-  private getShotSkill(player: typeof this.state.players[number]) {
-    return getShotSkill(this.getDecisionContext(), player);
-  }
-
   private choosePassTarget(
     teamId: string,
     passer: typeof this.state.players[number],
@@ -1416,17 +1544,6 @@ export class GameEngineAgent {
     instructions: Record<string, string> | undefined
   ) {
     return getPassLeadPosition(this.getDecisionContext(), passer, receiver, instructions);
-  }
-
-  private getDesiredPassDistance(
-    passer: typeof this.state.players[number],
-    instructions: Record<string, string> | undefined
-  ) {
-    return getDesiredPassDistance(this.getDecisionContext(), passer, instructions);
-  }
-
-  private getOpponentDistance(position: Vector2, teamId: string) {
-    return getOpponentDistance(this.getDecisionContext(), position, teamId);
   }
 
   private findNearestOpponent(position: Vector2, teamId: string) {
@@ -1909,8 +2026,8 @@ export class GameEngineAgent {
   private getPlaystyleBonus(
     player: typeof this.state.players[number],
     id: string,
-    standard: number,
-    plus: number
+    standard = 0,
+    plus = 0
   ) {
     if (player.playstylesPlus?.includes(id)) return plus;
     if (player.playstyles?.includes(id)) return standard;
@@ -1920,8 +2037,8 @@ export class GameEngineAgent {
   private getPlaystyleMultiplier(
     player: typeof this.state.players[number],
     id: string,
-    standard: number,
-    plus: number
+    standard = 1,
+    plus = 1
   ) {
     if (player.playstylesPlus?.includes(id)) return plus;
     if (player.playstyles?.includes(id)) return standard;
@@ -1953,41 +2070,105 @@ export class GameEngineAgent {
   private applyRuleDecision(decision: RuleDecision) {
     if (decision.type !== 'foul') {
       this.lastTouchTeamId = decision.teamId;
-      this.lastTouchPlayerId = decision.playerId;
     }
     if (decision.type === 'pass' || decision.type === 'out' || decision.type === 'offside') {
-      this.statsAgent.recordPassAttempt(decision.teamId);
+      this.emitEvent({
+        type: 'PassAttempted',
+        timeSeconds: this.state.time,
+        teamId: decision.teamId,
+        playerId: decision.playerId,
+        position: { ...this.state.ball.position }
+      });
     }
     if (decision.stats.pass) {
-      this.statsAgent.recordPass(decision.teamId);
+      this.emitEvent({
+        type: 'PassCompleted',
+        timeSeconds: this.state.time,
+        teamId: decision.teamId,
+        playerId: decision.playerId,
+        position: decision.ballPosition ? { ...decision.ballPosition } : { ...this.state.ball.position }
+      });
     }
     if (decision.stats.shot) {
-      this.statsAgent.recordShot(decision.teamId);
-      this.recordShotDetail(decision);
+      const xg = this.estimateXg(decision.playerId, decision.teamId, decision.chanceQuality);
+      this.emitEvent({
+        type: 'ShotTaken',
+        timeSeconds: this.state.time,
+        teamId: decision.teamId,
+        playerId: decision.playerId,
+        position: { ...this.state.ball.position },
+        data: { outcome: decision.shotOutcome ?? 'off_target', xg }
+      });
     }
     if (decision.stats.goal) {
-      this.statsAgent.recordGoal(decision.teamId);
+      this.emitEvent({
+        type: 'GoalScored',
+        timeSeconds: this.state.time,
+        teamId: decision.teamId,
+        playerId: decision.playerId,
+        position: decision.ballPosition ? { ...decision.ballPosition } : { ...this.state.ball.position }
+      });
     }
     if (decision.stats.foul) {
-      this.statsAgent.recordFoul(decision.teamId);
+      this.emitEvent({
+        type: 'FoulCommitted',
+        timeSeconds: this.state.time,
+        teamId: decision.teamId,
+        playerId: decision.playerId,
+        position: decision.restartPosition ? { ...decision.restartPosition } : { ...this.state.ball.position },
+        data: { advantage: Boolean(decision.advantage) }
+      });
     }
     if (decision.type === 'offside') {
-      this.statsAgent.recordOffside(decision.teamId);
+      this.emitEvent({
+        type: 'OffsideCalled',
+        timeSeconds: this.state.time,
+        teamId: decision.teamId,
+        playerId: decision.playerId,
+        position: decision.restartPosition ? { ...decision.restartPosition } : undefined
+      });
     }
     if (decision.restartType === 'corner' && decision.restartTeamId) {
-      this.statsAgent.recordCorner(decision.restartTeamId);
+      this.emitEvent({
+        type: 'CornerAwarded',
+        timeSeconds: this.state.time,
+        teamId: decision.restartTeamId,
+        position: decision.restartPosition ? { ...decision.restartPosition } : undefined
+      });
     }
     if (decision.turnoverReason === 'interception' && decision.turnoverTeamId) {
-      this.statsAgent.recordInterception(decision.turnoverTeamId);
+      this.emitEvent({
+        type: 'InterceptionMade',
+        timeSeconds: this.state.time,
+        teamId: decision.turnoverTeamId,
+        playerId: decision.turnoverPlayerId,
+        position: decision.ballPosition ? { ...decision.ballPosition } : undefined
+      });
     }
     if (decision.shotOutcome === 'on_target' && decision.turnoverPlayerId && decision.turnoverTeamId) {
       const saver = this.state.players.find((player) => player.id === decision.turnoverPlayerId);
       if (saver && this.isGoalkeeperRole(saver)) {
-        this.statsAgent.recordSave(decision.turnoverTeamId);
+        this.emitEvent({
+          type: 'SaveMade',
+          timeSeconds: this.state.time,
+          teamId: decision.turnoverTeamId,
+          playerId: saver.id,
+          position: { ...saver.position }
+        });
       }
     }
     if (decision.card) {
       this.applyDiscipline(decision.teamId, decision.playerId, decision.card);
+    }
+
+    if (decision.type === 'out') {
+      this.emitEvent({
+        type: 'BallOut',
+        timeSeconds: this.state.time,
+        teamId: decision.teamId,
+        playerId: decision.playerId,
+        position: decision.ballPosition ? { ...decision.ballPosition } : { ...this.state.ball.position }
+      });
     }
 
     const importance = this.matchImportance;
@@ -2070,7 +2251,7 @@ export class GameEngineAgent {
       if (turnoverPlayer) {
         this.state.ball.position = { ...turnoverPlayer.position };
         this.state.ball.velocity = { x: 0, y: 0 };
-        this.possession = { teamId: turnoverPlayer.teamId, playerId: turnoverPlayer.id };
+        this.setPossession({ teamId: turnoverPlayer.teamId, playerId: turnoverPlayer.id });
       }
     }
 
@@ -2092,7 +2273,7 @@ export class GameEngineAgent {
     ) {
       if (!hasTurnover) {
         if (!decision.advantage) {
-          this.possession = null;
+          this.setPossession(null);
         }
       }
       if (!decision.advantage) {
@@ -2101,21 +2282,13 @@ export class GameEngineAgent {
         this.actionCooldown = Math.max(this.actionCooldown, 0.4);
       }
     }
-  }
 
-  private recordShotDetail(decision: RuleDecision) {
-    if (!decision.shotOutcome) return;
-    if (decision.shotOutcome === 'goal' || decision.shotOutcome === 'on_target') {
-      this.statsAgent.recordShotOnTarget(decision.teamId);
-    } else if (decision.shotOutcome === 'off_target') {
-      this.statsAgent.recordShotOffTarget(decision.teamId);
-    } else if (decision.shotOutcome === 'blocked') {
-      this.statsAgent.recordShotBlocked(decision.teamId);
-    }
-
-    const xg = this.estimateXg(decision.playerId, decision.teamId, decision.chanceQuality);
-    if (xg > 0) {
-      this.statsAgent.recordXg(decision.teamId, xg);
+    if (decision.ballVelocity) {
+      const speed = Math.hypot(decision.ballVelocity.x, decision.ballVelocity.y);
+      if (speed > 0.5) {
+        const cooldown = clamp(0.1 + speed / 35, 0.12, 0.45);
+        this.possessionCooldown = Math.max(this.possessionCooldown, cooldown);
+      }
     }
   }
 
@@ -2158,7 +2331,7 @@ export class GameEngineAgent {
       type: restartType,
       takerId: taker?.id ?? null
     };
-    this.possession = null;
+    this.setPossession(null);
     this.actionCooldown = 0;
 
     this.state.ball.position = { ...restartPosition };
@@ -2170,6 +2343,14 @@ export class GameEngineAgent {
       this.state.time,
       commentary ?? `${this.getRestartLabel(restartType)} for ${this.resolveTeamName(restartTeamId)}.`
     );
+    this.eventRecorder.record({
+      type: 'RestartAwarded',
+      timeSeconds: this.state.time,
+      teamId: restartTeamId,
+      playerId: taker?.id,
+      position: { ...restartPosition },
+      data: { restartType }
+    });
   }
 
   private beginKickoff(teamId: string) {
@@ -2180,7 +2361,7 @@ export class GameEngineAgent {
     const [homeTeam, awayTeam] = this.state.teams;
     if (!homeTeam || !awayTeam) return;
     if (!this.kickoffTeamIdFirstHalf) {
-      this.kickoffTeamIdFirstHalf = Math.random() < 0.5 ? homeTeam.id : awayTeam.id;
+      this.kickoffTeamIdFirstHalf = this.random() < 0.5 ? homeTeam.id : awayTeam.id;
       this.kickoffTeamIdSecondHalf =
         this.kickoffTeamIdFirstHalf === homeTeam.id ? awayTeam.id : homeTeam.id;
     }
@@ -2190,9 +2371,14 @@ export class GameEngineAgent {
       this.sidesSwitched = false;
     }
     this.matchPhase = 'first_half';
+    this.eventRecorder.record({
+      type: 'MatchStarted',
+      timeSeconds: 0,
+      data: { kickoffTeamId: this.kickoffTeamIdFirstHalf }
+    });
     this.halfStartStats = this.cloneMatchStats(this.statsAgent.getStats());
     this.restartState = null;
-    this.possession = null;
+    this.setPossession(null);
     this.actionCooldown = 0;
     this.state.ball.position = { x: this.pitch.width / 2, y: this.pitch.height / 2 };
     this.state.ball.velocity = { x: 0, y: 0 };
@@ -2256,30 +2442,58 @@ export class GameEngineAgent {
     this.matchPhase = 'half_time';
     this.halftimeRemaining = HALFTIME_BREAK;
     this.restartState = null;
-    this.possession = null;
+    this.setPossession(null);
     this.actionCooldown = 0;
     applyHalftimeRecovery(this.getEventContext());
     this.halftimeRecovered = true;
+    this.eventRecorder.record({ type: 'HalfTime', timeSeconds: this.state.time });
+    this.manageAiSubstitutions(45, true);
+  }
+
+  private manageAiSubstitutions(minute: number, halftime = false) {
+    this.teamSetup?.teams.forEach((team) => {
+      if (team.controlType !== 'ai') return;
+      const tracker = this.substitutionTrackers[team.id];
+      if (!tracker || tracker.used >= MAX_SUBS || tracker.bench.size === 0) return;
+
+      const candidates = this.state.players
+        .filter((player) => player.teamId === team.id && tracker.lineup.has(player.id) && !player.discipline?.red)
+        .sort((left, right) => {
+          const injuryDifference = Number(Boolean(right.injury)) - Number(Boolean(left.injury));
+          return injuryDifference || (right.fatigue ?? 0) - (left.fatigue ?? 0);
+        });
+      const outgoing = candidates[0];
+      if (!outgoing) return;
+
+      const scheduled = halftime || minute === 60 || minute === 70 || minute === 80;
+      const urgent = Boolean(outgoing.injury) || (outgoing.fatigue ?? 0) >= 0.72;
+      if (!scheduled && !urgent) return;
+
+      const incomingId = tracker.bench.values().next().value as string | undefined;
+      if (incomingId) this.applySubstitution(team.id, outgoing.id, incomingId);
+    });
   }
 
   private beginSecondHalf() {
     this.switchSides();
     this.matchPhase = 'second_half';
     this.halfStartStats = this.cloneMatchStats(this.statsAgent.getStats());
+    this.eventRecorder.record({ type: 'SecondHalfStarted', timeSeconds: this.state.time });
     const kickoffTeam = this.kickoffTeamIdSecondHalf ?? this.state.teams[0]?.id;
     if (kickoffTeam) {
       this.beginKickoff(kickoffTeam);
     }
   }
 
-  private enterFullTime() {
+  private enterFullTime(commentary = 'Full-time.') {
     if (this.matchPhase === 'full_time') return;
     this.matchPhase = 'full_time';
     this.restartState = null;
-    this.possession = null;
+    this.setPossession(null);
     this.actionCooldown = 0;
     this.loopState.paused = true;
-    this.commentaryAgent.addLine(this.state.time, 'Full-time.');
+    this.commentaryAgent.addLine(this.state.time, commentary);
+    this.eventRecorder.record({ type: 'FullTime', timeSeconds: this.state.time });
   }
 
   private announceStoppage(stoppageSeconds: number) {
@@ -2362,7 +2576,12 @@ export class GameEngineAgent {
         ? this.getCornerSpot(restartTeamId, ball.position)
         : this.getGoalKickSpot(defendingTeamId);
     if (restartType === 'corner') {
-      this.statsAgent.recordCorner(restartTeamId);
+      this.emitEvent({
+        type: 'CornerAwarded',
+        timeSeconds: this.state.time,
+        teamId: restartTeamId,
+        position: { ...restartPosition }
+      });
     }
     this.beginRestart(restartType, restartTeamId, restartPosition);
     return true;
@@ -2682,7 +2901,7 @@ export class GameEngineAgent {
     const settings = this.getSetPieceSettings(restart.teamId);
     const deliverySpot = this.getCornerDeliverySpot(restart.position, restart.teamId, settings);
     const target = this.pickSetPieceTargetBySpot(restart.teamId, deliverySpot, new Set([taker.id]));
-    this.possession = { teamId: restart.teamId, playerId: taker.id };
+    this.setPossession({ teamId: restart.teamId, playerId: taker.id });
 
     if (!target) {
       this.commentaryAgent.addLine(this.state.time, 'Play resumes.');
@@ -2721,9 +2940,9 @@ export class GameEngineAgent {
     shotChance *= this.getPlaystyleMultiplier(taker, 'dead_ball', 1.12, 1.18);
     if (this.hasTrait(taker, 'hits_free_kicks_with_power')) shotChance *= 1.08;
     if (this.hasTrait(taker, 'tries_long_range_free_kicks') && distance > 30) shotChance *= 1.25;
-    const shouldShoot = !wideAngle && Math.random() < clamp(shotChance, 0.05, 0.85);
+    const shouldShoot = !wideAngle && this.random() < clamp(shotChance, 0.05, 0.85);
 
-    this.possession = { teamId: restart.teamId, playerId: taker.id };
+    this.setPossession({ teamId: restart.teamId, playerId: taker.id });
 
     if (shouldShoot) {
       const decision = this.rules.decideShot(
@@ -2767,7 +2986,7 @@ export class GameEngineAgent {
     const instructions = this.getTeamInstructions(restart.teamId);
     const settings = this.getSetPieceSettings(restart.teamId);
     const target = this.pickThrowInTarget(restart.teamId, taker, settings);
-    this.possession = { teamId: restart.teamId, playerId: taker.id };
+    this.setPossession({ teamId: restart.teamId, playerId: taker.id });
 
     if (!target) {
       this.commentaryAgent.addLine(this.state.time, 'Play resumes.');
@@ -2794,7 +3013,7 @@ export class GameEngineAgent {
     }
 
     const instructions = this.getTeamInstructions(restart.teamId);
-    this.possession = { teamId: restart.teamId, playerId: taker.id };
+    this.setPossession({ teamId: restart.teamId, playerId: taker.id });
     const decision = this.rules.decideShot(
       this.state,
       restart.teamId,
@@ -2815,7 +3034,7 @@ export class GameEngineAgent {
 
     const instructions = this.getTeamInstructions(restart.teamId);
     const target = this.findNearestTeammate(restart.teamId, restart.position, taker.id);
-    this.possession = { teamId: restart.teamId, playerId: taker.id };
+    this.setPossession({ teamId: restart.teamId, playerId: taker.id });
 
     if (!target) {
       this.commentaryAgent.addLine(this.state.time, 'Play resumes.');
@@ -2842,7 +3061,7 @@ export class GameEngineAgent {
     }
 
     const instructions = this.getTeamInstructions(restart.teamId);
-    this.possession = { teamId: restart.teamId, playerId: taker.id };
+    this.setPossession({ teamId: restart.teamId, playerId: taker.id });
     const decision = this.handleGoalkeeperPossession(taker, instructions, 0, {
       ignoreOffside: true,
       setPiece: 'goal_kick'
@@ -2861,7 +3080,7 @@ export class GameEngineAgent {
       this.commentaryAgent.addLine(this.state.time, 'Play resumes.');
       return;
     }
-    this.possession = { teamId: restart.teamId, playerId: taker.id };
+    this.setPossession({ teamId: restart.teamId, playerId: taker.id });
     this.state.ball.position = { ...restart.position };
     this.state.ball.velocity = { x: 0, y: 0 };
     this.state.ball.spin = { x: 0, y: 0 };
@@ -2870,7 +3089,7 @@ export class GameEngineAgent {
   }
 
   private getRestartDuration(restartType: NonNullable<RuleDecision['restartType']>) {
-    const jitter = Math.random() * 0.8;
+    const jitter = this.random() * 0.8;
     switch (restartType) {
       case 'dropped_ball':
         return 2.5 + jitter;
@@ -2991,7 +3210,7 @@ export class GameEngineAgent {
         return { player, score };
       }
       return best;
-    }, null as null | { player: typeof this.state.players[number]; score: number })?.player ?? null;
+    }, null as null | { player: SimPlayer; score: number })?.player ?? null;
   }
 
   private pickClosestPlayerToPosition(
@@ -3109,6 +3328,7 @@ export class GameEngineAgent {
   }
 
   private requiresNewWindow(tracker: SubstitutionTracker) {
+    if (this.matchPhase === 'half_time') return false;
     if (tracker.lastWindowStart === null) return true;
     return this.state.time - tracker.lastWindowStart > WINDOW_GRACE_SECONDS;
   }
@@ -3128,19 +3348,57 @@ export class GameEngineAgent {
 
     if (card === 'yellow') {
       player.discipline.yellow = Math.min(2, player.discipline.yellow + 1);
-      this.statsAgent.recordYellow(teamId);
+      this.emitEvent({
+        type: 'CardShown',
+        timeSeconds: this.state.time,
+        teamId,
+        playerId,
+        position: { ...player.position },
+        data: { card: 'yellow' }
+      });
       if (player.discipline.yellow >= 2) {
         player.discipline.red = true;
-        this.statsAgent.recordRed(teamId);
+        this.emitEvent({
+          type: 'CardShown',
+          timeSeconds: this.state.time,
+          teamId,
+          playerId,
+          position: { ...player.position },
+          data: { card: 'red', reason: 'second_yellow' }
+        });
         this.commentaryAgent.addLine(
           this.state.time,
           `${player.name} is dismissed after a second yellow card.`
         );
+        this.checkMinimumPlayers(teamId);
       }
       return;
     }
 
     player.discipline.red = true;
-    this.statsAgent.recordRed(teamId);
+    this.emitEvent({
+      type: 'CardShown',
+      timeSeconds: this.state.time,
+      teamId,
+      playerId,
+      position: { ...player.position },
+      data: { card: 'red', reason: 'direct' }
+    });
+    this.checkMinimumPlayers(teamId);
+  }
+
+  private checkMinimumPlayers(teamId: string) {
+    const eligible = this.state.players.filter(
+      (player) => player.teamId === teamId && !player.discipline?.red
+    ).length;
+    if (eligible >= 7) return;
+    const reason = `${this.resolveTeamName(teamId)} has fewer than seven eligible players.`;
+    this.eventRecorder.record({
+      type: 'MatchAbandoned',
+      timeSeconds: this.state.time,
+      teamId,
+      data: { reason }
+    });
+    this.enterFullTime(`Match abandoned. ${reason}`);
   }
 }

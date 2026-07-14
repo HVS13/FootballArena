@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { GameEngineAgent, MatchStatus, RestartInfo, SubstitutionStatus } from '../agents/GameEngineAgent';
 import { CommentaryLine, MatchStats } from '../domain/matchTypes';
 import { RenderState, TeamState } from '../domain/simulationTypes';
 import { TeamSetupState } from '../domain/teamSetupTypes';
+import { isTeamSetupValid } from '../domain/teamSetupValidation';
 import { referenceData } from '../data/referenceData';
 import { useAppState } from '../state/appState';
 
@@ -83,6 +85,7 @@ const applySubstitutionToSetup = (
 };
 
 const MatchPage = () => {
+  const navigate = useNavigate();
   const { state, dispatch } = useAppState();
   const [renderState, setRenderState] = useState<RenderState | null>(null);
   const [matchStats, setMatchStats] = useState<MatchStats | null>(null);
@@ -92,9 +95,11 @@ const MatchPage = () => {
   const [matchStatus, setMatchStatus] = useState<MatchStatus | null>(null);
   const [subSelections, setSubSelections] = useState<Record<string, SubSelection>>({});
   const [subErrors, setSubErrors] = useState<Record<string, string>>({});
+  const [matchInstance, setMatchInstance] = useState(0);
   const engineRef = useRef<GameEngineAgent | null>(null);
   const initialSetupRef = useRef<TeamSetupState | null>(state.teamSetup);
   const initialEnvironmentRef = useRef(state.environment);
+  const initialSeedRef = useRef(state.matchSeed ?? Date.now());
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -223,6 +228,10 @@ const MatchPage = () => {
   }, [renderState, teamList, matchStats]);
 
   useEffect(() => {
+    if (!isTeamSetupValid(initialSetupRef.current)) {
+      navigate('/setup', { replace: true });
+      return;
+    }
     const engine = new GameEngineAgent({
       onRender: setRenderState,
       onMatchUpdate: (stats, lines, restart, status) => {
@@ -233,7 +242,9 @@ const MatchPage = () => {
         setMatchStatus(status);
       },
       teamSetup: initialSetupRef.current ?? undefined,
-      environment: initialEnvironmentRef.current
+      environment: initialEnvironmentRef.current,
+      autoContinueHalftime: false,
+      seed: initialSeedRef.current
     });
     engineRef.current = engine;
     engine.start();
@@ -242,7 +253,7 @@ const MatchPage = () => {
       engine.stop();
       engineRef.current = null;
     };
-  }, []);
+  }, [matchInstance, navigate]);
 
   useEffect(() => {
     engineRef.current?.setSpeed(state.simSpeed);
@@ -253,11 +264,12 @@ const MatchPage = () => {
   }, [state.isPaused]);
 
   useEffect(() => {
-    if (!state.teamSetup) return;
+    const teamSetup = state.teamSetup;
+    if (!teamSetup) return;
 
     setSubSelections((prev) => {
       const next: Record<string, SubSelection> = { ...prev };
-      state.teamSetup.teams.forEach((team) => {
+      teamSetup.teams.forEach((team) => {
         const lineupIds = team.slots
           .map((slot) => slot.playerId)
           .filter((value): value is string => Boolean(value));
@@ -476,8 +488,7 @@ const MatchPage = () => {
       case 'second_half':
         return '2nd Half';
       case 'half_time': {
-        const remaining = Math.ceil(matchStatus.halftimeRemaining ?? 0);
-        return `Half-time (${remaining}s)`;
+        return 'Half-time';
       }
       case 'full_time':
         return 'Full-time';
@@ -487,6 +498,60 @@ const MatchPage = () => {
   }, [matchStatus]);
 
   const controlsDisabled = matchStatus?.phase === 'full_time';
+
+  const handleRematch = () => {
+    engineRef.current?.stop();
+    if (initialSetupRef.current) {
+      dispatch({ type: 'SET_TEAM_SETUP', teamSetup: initialSetupRef.current });
+    }
+    dispatch({ type: 'SET_PAUSED', paused: false });
+    setRenderState(null);
+    setMatchStats(null);
+    setCommentary([]);
+    setSubStatus(null);
+    setRestartInfo(null);
+    setMatchStatus(null);
+    setSubErrors({});
+    initialSeedRef.current = Date.now();
+    setMatchInstance((value) => value + 1);
+  };
+
+  const handleRepeatSeed = () => {
+    engineRef.current?.stop();
+    dispatch({ type: 'SET_PAUSED', paused: false });
+    setRenderState(null);
+    setMatchStats(null);
+    setCommentary([]);
+    setSubStatus(null);
+    setRestartInfo(null);
+    setMatchStatus(null);
+    setSubErrors({});
+    setMatchInstance((value) => value + 1);
+  };
+
+  const handleEditTeams = () => {
+    engineRef.current?.stop();
+    navigate('/setup');
+  };
+
+  const handleNewMatch = () => {
+    engineRef.current?.stop();
+    dispatch({ type: 'SET_TEAM_SETUP', teamSetup: null });
+    dispatch({ type: 'SET_PAUSED', paused: false });
+    navigate('/setup');
+  };
+
+  const handleExportResult = () => {
+    const result = engineRef.current?.exportMatchResult();
+    if (!result) return;
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `football-arena-${result.config.seed}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
   const stoppageLabel = useMemo(() => {
     if (!matchStatus) return null;
@@ -518,7 +583,24 @@ const MatchPage = () => {
         </div>
         {controlsDisabled && (
           <div className="match-final" role="status" aria-live="polite">
-            Match finished. Full-time whistle blown.
+            <strong>Match finished. Full-time whistle blown.</strong>
+            <div className="controls-row" style={{ marginTop: '12px' }}>
+              <button className="button" onClick={handleRematch}>Rematch</button>
+              <button className="button secondary" onClick={handleRepeatSeed}>Repeat Same Seed</button>
+              <button className="button secondary" onClick={handleEditTeams}>Edit Teams</button>
+              <button className="button secondary" onClick={handleNewMatch}>New Match</button>
+              <button className="button secondary" onClick={handleExportResult}>Export JSON</button>
+            </div>
+          </div>
+        )}
+        {matchStatus?.phase === 'half_time' && (
+          <div className="match-final" role="status" aria-live="polite">
+            <strong>Half-time. Review the first half and make any changes.</strong>
+            <div className="controls-row" style={{ marginTop: '12px' }}>
+              <button className="button" onClick={() => engineRef.current?.submitCommand({ type: 'start_second_half' })}>
+                Start Second Half
+              </button>
+            </div>
           </div>
         )}
         {restartInfo && (
@@ -672,7 +754,11 @@ const MatchPage = () => {
                         </select>
                       </label>
                     </div>
-                    <button className="button" onClick={() => handleApplySubstitution(team.id)}>
+                    <button
+                      className="button"
+                      onClick={() => handleApplySubstitution(team.id)}
+                      aria-label={`Make substitution for ${team.name}`}
+                    >
                       Make Substitution
                     </button>
                   </div>

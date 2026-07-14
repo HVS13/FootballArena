@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { RulesAgent } from '../agents/RulesAgent';
 import { DEFAULT_PITCH, SimulationState } from '../domain/simulationTypes';
 
@@ -148,10 +148,8 @@ describe('RulesAgent', () => {
     state.players = [shooter];
     state.ball.position = { ...shooter.position };
 
-    const agent = new RulesAgent({ pitch: DEFAULT_PITCH, homeTeamId: 'home' });
-    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const agent = new RulesAgent({ pitch: DEFAULT_PITCH, homeTeamId: 'home', random: () => 0 });
     const decision = agent.decideShot(state, 'home', shooter);
-    randomSpy.mockRestore();
 
     expect(decision.type).toBe('goal');
     expect(decision.restartType).toBe('kick_off');

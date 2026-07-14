@@ -1,5 +1,6 @@
 ﻿import { MatchStats, TeamMatchStats } from '../domain/matchTypes';
 import { SimulationState } from '../domain/simulationTypes';
+import { MatchEvent } from '../domain/matchContracts';
 
 const createTeamStats = (): TeamMatchStats => ({
   possessionSeconds: 0,
@@ -24,7 +25,6 @@ const createTeamStats = (): TeamMatchStats => ({
 
 export class StatsAgent {
   private stats: MatchStats;
-  private lastPossessingTeamId: string | null = null;
 
   constructor(teamIds: string[]) {
     const byTeam: Record<string, TeamMatchStats> = {};
@@ -40,11 +40,87 @@ export class StatsAgent {
 
   step(state: SimulationState, dt: number, possessionTeamId?: string | null) {
     this.stats.clockSeconds = state.time;
-    const possession = possessionTeamId ?? this.resolvePossession(state);
+    const possession = possessionTeamId === undefined ? this.resolvePossession(state) : possessionTeamId;
 
     if (possession) {
       this.stats.byTeam[possession].possessionSeconds += dt;
-      this.lastPossessingTeamId = possession;
+    }
+  }
+
+  static replay(teamIds: string[], events: MatchEvent[]) {
+    const agent = new StatsAgent(teamIds);
+    let possessionTeamId: string | null = null;
+    let possessionStartedAt = 0;
+    [...events].sort((left, right) => left.sequence - right.sequence).forEach((event) => {
+      if (event.type === 'PossessionChanged' || event.type === 'FullTime') {
+        if (possessionTeamId && agent.stats.byTeam[possessionTeamId]) {
+          agent.stats.byTeam[possessionTeamId].possessionSeconds += Math.max(
+            0,
+            event.timeSeconds - possessionStartedAt
+          );
+        }
+        possessionStartedAt = event.timeSeconds;
+        if (event.type === 'PossessionChanged') {
+          possessionTeamId = event.data?.controlled === true ? event.teamId ?? null : null;
+        } else {
+          possessionTeamId = null;
+        }
+      }
+      agent.recordEvent(event);
+      agent.stats.clockSeconds = Math.max(agent.stats.clockSeconds, event.timeSeconds);
+    });
+    return agent.getStats();
+  }
+
+  recordEvent(event: MatchEvent) {
+    const teamId = event.teamId;
+    if (!teamId || !this.stats.byTeam[teamId]) return;
+    const stats = this.stats.byTeam[teamId];
+    switch (event.type) {
+      case 'PassAttempted':
+        stats.passesAttempted += 1;
+        break;
+      case 'PassCompleted':
+        stats.passes += 1;
+        break;
+      case 'ShotTaken': {
+        stats.shots += 1;
+        const outcome = event.data?.outcome;
+        if (outcome === 'goal' || outcome === 'on_target') stats.shotsOnTarget += 1;
+        if (outcome === 'off_target') stats.shotsOffTarget += 1;
+        if (outcome === 'blocked') stats.shotsBlocked += 1;
+        const xg = event.data?.xg;
+        if (typeof xg === 'number') stats.xg += xg;
+        break;
+      }
+      case 'GoalScored':
+        stats.goals += 1;
+        break;
+      case 'FoulCommitted':
+        stats.fouls += 1;
+        break;
+      case 'CardShown':
+        if (event.data?.card === 'yellow') stats.yellowCards += 1;
+        if (event.data?.card === 'red') stats.redCards += 1;
+        break;
+      case 'OffsideCalled':
+        stats.offsides += 1;
+        break;
+      case 'CornerAwarded':
+        stats.corners += 1;
+        break;
+      case 'TackleWon':
+        stats.tacklesWon += 1;
+        break;
+      case 'InterceptionMade':
+        stats.interceptions += 1;
+        break;
+      case 'SaveMade':
+        stats.saves += 1;
+        break;
+      case 'SubstitutionMade':
+        stats.substitutions += 1;
+        break;
     }
   }
 

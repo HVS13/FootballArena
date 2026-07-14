@@ -3,8 +3,11 @@ import { RuleDecision, RulesAgent } from '../RulesAgent';
 import { RoleBehavior } from '../../data/roleBehavior';
 import { clamp } from './engineMath';
 import { RoleArchetypeProfile, SimPlayer } from './engineTypes';
+import { RandomSource } from './seededRandom';
+import { TUNING } from '../../data/tuning';
 
 export type DecisionContext = {
+  random: RandomSource;
   state: SimulationState;
   pitch: PitchDimensions;
   rules: RulesAgent;
@@ -49,7 +52,7 @@ export const handleGoalkeeperPossession = (
     gkInstructions,
     decisionContext
   );
-  if (pressure > 0.35 && Math.random() < 0.2) {
+  if (pressure > 0.35 && context.random() < 0.2) {
     decision.commentary = `${goalkeeper.name} clears under pressure.`;
   }
   return decision;
@@ -160,6 +163,11 @@ export const shouldCarryBall = (
   pressure = 0
 ) => {
   const dribbling = context.getAttribute(player, 'dribbling');
+  const decisions = context.getAttribute(player, 'decisions');
+  const balance = context.getAttribute(player, 'balance');
+  const acceleration = context.getAttribute(player, 'acceleration');
+  const pace = context.getAttribute(player, 'pace');
+  const composure = context.getAttribute(player, 'composure');
   let carryChance = 0.15 + (dribbling / 100) * 0.3;
   const roleBehavior = context.getRoleBehavior(player);
   const roleProfile = context.getRoleArchetypeProfile(player);
@@ -207,11 +215,14 @@ export const shouldCarryBall = (
   const protectingLate = scoreDiff > 0 ? clamp((minute - 70) / 20, 0, 1) : 0;
   carryChance += chasingLate * 0.06;
   carryChance -= protectingLate * 0.08;
+  const carryControl = clamp((decisions + balance + acceleration + pace) / 400, 0, 1);
+  carryChance *= 0.85 + carryControl * 0.3;
+  carryChance *= 0.9 + (composure / 100) * 0.2;
 
   carryChance *= moraleFactor * (1 - fatigue * 0.25);
   carryChance *= 1 - clamp(pressure * 0.55, 0, 0.45);
   carryChance = clamp(carryChance, 0.08, 0.55);
-  return Math.random() < carryChance;
+  return context.random() < carryChance;
 };
 
 export const getActionCooldown = (
@@ -249,7 +260,7 @@ export const getActionCooldown = (
   base *= 1 + fatigue * 0.4;
 
   base *= 1 - clamp(pressure * 0.25, 0, 0.2);
-  return clamp(base, 0.45, 2.2);
+  return clamp(base * TUNING.match.actionCooldownMultiplier, 0.55, 6);
 };
 
 export const shouldShoot = (
@@ -273,6 +284,8 @@ export const shouldShoot = (
   const minute = context.state.time / 60;
   const chasingLate = scoreDiff < 0 ? clamp((minute - 50) / 30, 0, 1) : 0;
   const protectingLate = scoreDiff > 0 ? clamp((minute - 70) / 20, 0, 1) : 0;
+  const decisions = context.getAttribute(player, 'decisions');
+  const composure = context.getAttribute(player, 'composure');
 
   const shotsInstruction = instructions?.shots_from_distance;
   let maxRange = shotsInstruction === 'Encouraged' ? 32 : shotsInstruction === 'Reduced' ? 22 : 26;
@@ -327,6 +340,7 @@ export const shouldShoot = (
   desire += roleProfile.decision.shootBias;
   desire += creativeBias;
   desire *= moraleFactor * (1 - fatigue * 0.2);
+  desire *= 0.85 + clamp((decisions + composure) / 200, 0, 1) * 0.3;
 
   const tempo = instructions?.tempo;
   if (tempo === 'Higher') desire += 0.04;
@@ -348,7 +362,7 @@ export const shouldShoot = (
   }
 
   desire = clamp(desire, 0.05, 0.7);
-  return Math.random() < desire;
+  return context.random() < desire;
 };
 
 export const getShotSkill = (context: DecisionContext, player: SimPlayer) => {
@@ -379,13 +393,15 @@ export const choosePassTarget = (
   const gamechanger = context.hasPlaystyle(passer, 'gamechanger');
   const whippedPass = context.hasPlaystyle(passer, 'whipped_pass');
   const longBall = context.hasPlaystyle(passer, 'long_ball_pass');
-  const riskBias =
+  const decisions = context.getAttribute(passer, 'decisions');
+  let riskBias =
     roleBehavior.risk +
     creativeBias +
     roleProfile.decision.riskBias +
     (inventive ? context.getPlaystyleBonus(passer, 'inventive', 0.08, 0.12) : 0) +
     (flair ? context.getPlaystyleBonus(passer, 'flair', 0.05, 0.08) : 0) +
     (gamechanger ? context.getPlaystyleBonus(passer, 'gamechanger', 0.08, 0.12) : 0);
+  riskBias *= 0.7 + (decisions / 100) * 0.6;
   const fatigue = passer.fatigue ?? 0;
   const fatigueRiskScale = 1 - fatigue * 0.5;
   const direction = context.getAttackDirection(teamId);
@@ -506,12 +522,17 @@ export const choosePassTarget = (
       }
 
       if (context.rules.isOffsidePosition(context.state, teamId, receiver)) {
-        score *= 0.25;
+        score *= TUNING.match.offsideTargetScoreMultiplier;
       }
 
       if (distance > desiredDistance * 1.7) {
         score *= 0.6;
       }
+
+      const firstTouch = context.getAttribute(receiver, 'first_touch');
+      const technique = context.getAttribute(receiver, 'technique');
+      const controlFactor = clamp((firstTouch + technique) / 200, 0, 1);
+      score *= 0.85 + controlFactor * 0.3;
 
       return { receiver, score: Math.max(0, score) };
     })
@@ -533,7 +554,7 @@ export const choosePassTarget = (
   }
   const top = scored.slice(0, 5);
   const total = top.reduce((sum, entry) => sum + entry.score, 0);
-  let roll = Math.random() * total;
+  let roll = context.random() * total;
   for (const entry of top) {
     roll -= entry.score;
     if (roll <= 0) return entry.receiver;
@@ -568,7 +589,7 @@ export const getPassLeadPosition = (
   if (instructions?.passing_directness === 'Much Shorter') chance -= 0.1;
   if (instructions?.passing_directness === 'Much More Direct') chance += 0.06;
 
-  if (Math.random() > clamp(chance, 0.05, 0.75)) return null;
+  if (context.random() > clamp(chance, 0.05, 0.75)) return null;
   return {
     x: clamp(target.x, 0.5, context.pitch.width - 0.5),
     y: clamp(target.y, 0.5, context.pitch.height - 0.5)
